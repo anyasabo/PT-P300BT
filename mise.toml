@@ -1,0 +1,68 @@
+[tools]
+node = "26.13.0"
+npm = "12.2.1"
+python = "3.15.2"
+uv = "0.13.6"
+
+[env]
+_.path = ["node_modules/.bin", ".venv/bin"]
+
+[tasks.setup]
+description = "Install the Python and Node dependencies and the Playwright browser"
+run = ["uv sync --locked", "npm ci", "npx playwright install chromium webkit"]
+
+[tasks.fmt]
+description = "Format all code"
+run = ["ruff format .", "ruff check --fix .", "biome check --write ."]
+
+[tasks."lint:py"]
+description = "Check the Python format and lint"
+run = ["ruff format --check .", "ruff check ."]
+
+[tasks."lint:web"]
+description = "Check the web format and lint"
+run = "biome check --error-on-warnings ."
+
+[tasks.lint]
+description = "Run all linters"
+depends = ["lint:py", "lint:web"]
+
+[tasks."typecheck:py"]
+description = "Check the Python types"
+run = "ty check"
+
+[tasks."typecheck:web"]
+description = "Check the web types"
+run = "tsc --noEmit"
+
+[tasks.typecheck]
+description = "Run all type checkers"
+depends = ["typecheck:py", "typecheck:web"]
+
+[tasks."test:py"]
+description = "Run the Python tests"
+run = "pytest"
+
+[tasks."test:unit"]
+description = "Run the web unit and parity tests"
+run = "vitest run"
+
+[tasks."test:e2e"]
+description = "Run the browser tests"
+run = "playwright test"
+
+[tasks.test]
+description = "Run all tests"
+depends = ["test:py", "test:unit", "test:e2e"]
+
+[tasks.build]
+description = "Build the web GUI into web/dist"
+run = "vite build"
+
+[tasks.dev]
+description = "Serve the web GUI on http://localhost:8000"
+run = "vite"
+
+[tasks.check]
+description = "Run everything that CI runs"
+depends = ["lint", "typecheck", "test", "build"]

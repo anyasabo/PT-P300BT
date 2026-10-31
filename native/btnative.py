@@ -2,7 +2,7 @@
 
 A `serial.Serial`-compatible class that talks to the printer over a macOS
 IOBluetooth RFCOMM channel, entirely in-process — no Swift, no subprocess.
-Requires only:  pip install pyobjc-framework-IOBluetooth
+Requires only pyobjc-framework-IOBluetooth, which `uv sync` installs.
 
 Why this exists: the macOS /dev/cu.* Bluetooth-serial bridge is unreliable for
 this printer (pyserial's close() never drains the macOS run loop, so bluetoothd

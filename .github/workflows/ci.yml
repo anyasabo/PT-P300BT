@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches-ignore: [gh-pages]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+      - run: mise run setup
+      - name: Install the system packages for the Playwright browsers
+        if: runner.os == 'Linux'
+        run: mise exec -- npx playwright install-deps chromium webkit
+      - run: mise run check

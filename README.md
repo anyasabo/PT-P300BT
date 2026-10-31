@@ -14,64 +14,63 @@ This repository provides pure-Web and pure-Python tools for printing from comput
 
 ### Text Rendering
 
-* **Unicode Support**: Full UTF-8 character support with optional Unicode escape sequences
-* **Custom Fonts**: Support for TrueType (.ttf) and OpenType (.otf) fonts
-* **Automatic Font Sizing**: Intelligent font size optimization to fit the printable area
-* **Multiline Text**: Support for multi-line labels with configurable line spacing
-* **Text Styling**: Configurable fill colors, stroke effects, and text centering
-* **Font Scaling**: Manual font size scaling with percentage-based adjustments
-* **Emoji Support**: Emoji are rendered as raster overlays (in-line sized to their row, or filling the printable area with `--emoji-print-area`), shown in black & white by default (what actually prints) or in color with `--no-mono-emoji`
-* **Uniform Font Sizing** (`--uniform-font`): measure a fixed sample ("Ag") so all labels with the same number of lines use the same font size
-* **OpenType Features** (`--ligatures FEATURE`): apply a GSUB feature of the selected font (e.g. `calt` for the arrows in Fira Code, `liga`/`dlig`) via optional uharfbuzz shaping; `--list-ligatures` shows which features the font exposes
-* **TAB Expansion** (`--tab-width`): expand TAB characters to a configurable number of spaces so they never print as a square box
+- **Unicode Support**: Full UTF-8 character support with optional Unicode escape sequences
+- **Custom Fonts**: Support for TrueType (.ttf) and OpenType (.otf) fonts
+- **Automatic Font Sizing**: Intelligent font size optimization to fit the printable area
+- **Multiline Text**: Support for multi-line labels with configurable line spacing
+- **Text Styling**: Configurable fill colors, stroke effects, and text centering
+- **Font Scaling**: Manual font size scaling with percentage-based adjustments
+- **Emoji Support**: Emoji are rendered as raster overlays (in-line sized to their row, or filling the printable area with `--emoji-print-area`), shown in black & white by default (what actually prints) or in color with `--no-mono-emoji`
+- **Uniform Font Sizing** (`--uniform-font`): measure a fixed sample ("Ag") so all labels with the same number of lines use the same font size
+- **OpenType Features** (`--ligatures FEATURE`): apply a GSUB feature of the selected font (e.g. `calt` for the arrows in Fira Code, `liga`/`dlig`) via optional uharfbuzz shaping; `--list-ligatures` shows which features the font exposes
+- **TAB Expansion** (`--tab-width`): expand TAB characters to a configurable number of spaces so they never print as a square box
 
 ### Image Processing
 
-* **Image Integration**: Merge images with text labels
-* **PDF Support**: Convert PDF files to images for printing
-* **Smart Cropping**: Automatic cropping of white space around image content
-* **Aspect Ratio Preservation**: Maintains image proportions while resizing
-* **Multiple Image Merge**: Combine multiple images in a single label
+- **Image Integration**: Merge images with text labels
+- **PDF Support**: Convert PDF files to images for printing
+- **Smart Cropping**: Automatic cropping of white space around image content
+- **Aspect Ratio Preservation**: Maintains image proportions while resizing
+- **Multiple Image Merge**: Combine multiple images in a single label
 
 ### Label Customization
 
-* **Flexible Sizing**: Custom horizontal text stretching to specified millimeter widths
-* **Padding Control**: Adjustable horizontal padding and vertical positioning
-* **End Margins**: Configurable end margins for label finishing
-* **Auto-cutting**: Optional automatic cutting or label boundary marking
-* **Chain Printing**: Disable feeding for continuous label chains
-* **Configurable Tape Width** (`--tape-width`): plan the label for a smaller printable band (e.g. 6/9 mm) while keeping the 128 px raster compatible with the device (the hardware itself prints on 12 mm tape)
+- **Flexible Sizing**: Custom horizontal text stretching to specified millimeter widths
+- **Padding Control**: Adjustable horizontal padding and vertical positioning
+- **End Margins**: Configurable end margins for label finishing
+- **Auto-cutting**: Optional automatic cutting or label boundary marking
+- **Chain Printing**: Disable feeding for continuous label chains
+- **Configurable Tape Width** (`--tape-width`): plan the label for a smaller printable band (e.g. 6/9 mm) while keeping the 128 px raster compatible with the device (the hardware itself prints on 12 mm tape)
 
 ### Graphical Interface (`--gui`)
 
-* **Tkinter GUI**: launch a full graphical front-end with `python printlabel.py --gui`
-
-  * live preview of the label, matching the printed tape 1:1
-  * color emoji rendering in the Text & Font input box
-  * system font browser with per-font sample preview
-  * all options exposed as controls (text, images, merge list, expert settings)
-  * print confirmation dialog and error reporting
-  * console progress messages are suppressed while the GUI is running
+- **Tkinter GUI**: launch a full graphical front-end with `python printlabel.py --gui`
+  - live preview of the label, matching the printed tape 1:1
+  - color emoji rendering in the Text & Font input box
+  - system font browser with per-font sample preview
+  - all options exposed as controls (text, images, merge list, expert settings)
+  - print confirmation dialog and error reporting
+  - console progress messages are suppressed while the GUI is running
 
 ### Web GUI
 
-* **Browser-based Interface**: Full-featured web interface available at https://ircama.github.io/PT-P300BT/
-* **Live Preview**: Preview the label directly in the browser before printing
-* **Font Browser**: Browse and preview available system fonts
-* **Color Emoji Rendering**: Render color emoji directly in the text input
-* **Image Support**: Add and combine images with text labels
-* **OpenType Features**: Select supported OpenType/GSUB features such as `liga`, `dlig`, and `calt`
-* **Bluetooth Printing**: Print directly to the P300BT over Bluetooth Classic RFCOMM where supported by the browser
-* **Cross-Platform**: Designed to run on supported desktop and mobile browsers without requiring a dedicated native application
-* **Print Controls**: Configure tape size, margins, spacing, cutting, chaining, and other printing options directly from the browser
+- **Browser-based Interface**: Full-featured web interface available at https://ircama.github.io/PT-P300BT/
+- **Live Preview**: Preview the label directly in the browser before printing
+- **Font Browser**: Browse and preview available system fonts
+- **Color Emoji Rendering**: Render color emoji directly in the text input
+- **Image Support**: Add and combine images with text labels
+- **OpenType Features**: Select supported OpenType/GSUB features such as `liga`, `dlig`, and `calt`
+- **Bluetooth Printing**: Print directly to the P300BT over Bluetooth Classic RFCOMM where supported by the browser
+- **Cross-Platform**: Designed to run on supported desktop and mobile browsers without requiring a dedicated native application
+- **Print Controls**: Configure tape size, margins, spacing, cutting, chaining, and other printing options directly from the browser
 
 ### Advanced Features
 
-* **Line Spacing Optimization**: Automatic line spacing adjustment when text doesn't fit
-* **Visual Guides**: Optional ruler lines and printable area indicators
-* **Binary Conversion**: Optimized image processing with custom thresholding
-* **Compression Control**: Optional compression disable for specific printing needs
-* **Preview Mode**: View generated images before printing
+- **Line Spacing Optimization**: Automatic line spacing adjustment when text doesn't fit
+- **Visual Guides**: Optional ruler lines and printable area indicators
+- **Binary Conversion**: Optimized image processing with custom thresholding
+- **Compression Control**: Optional compression disable for specific printing needs
+- **Preview Mode**: View generated images before printing
 
 ## Usage
 
@@ -275,7 +274,7 @@ Options `-sln` are useful to simulate the print, showing the created image and a
 
 Before generating the text (`TEXT_TO_PRINT`), the tool allows concatenating images with the `-M` option; it can be used more times for multiple images (transparent images are also accepted). The final image can also be saved with the `-S` option and then reused by running again the tool with the `-M` option; when also setting `TEXT_TO_PRINT` to a null string (`""`), the reused image will remain unchanged. Merged images are automatically resized to fit the printable area, removing white borders without modifying the proportion. Resize and translation of merged images can also be manually controlled with `-R` (floating point number), `-X`, `-Y`. The `--text-size` option horizontally stretches or squeezes the text so that it fits the specified size in millimeters; the size parameter includes `--end-margin` and default left and right paddings, but does not include the size of merged images if used, which have a fixed length that has to be kept proportioned. The `font-scale` allows specifying a percentage to scale the font size, maintaining the aspect ratio; font sizes > 100 are accepted even if potentially causing overflow. `--h-padding` and `--v-shift` allow horizontally and vertically translating the text (using `--h-padding` with `--end-margin` enables separately cointrolling left and right margins; specifically `--h-padding` uses the same value for the left and right parts, while `--end-margin` will be a relative value applied to the right `--h-padding`).
 
-`-i` runs the legacy process of *labelmaker.py* and disables image processing.
+`-i` runs the legacy process of _labelmaker.py_ and disables image processing.
 
 ## Further examples
 
@@ -320,16 +319,21 @@ python printlabel.py -sln --stroke-width 1 --fill-color="white" --stroke-fill="b
 
 ```
 git clone https://github.com/Ircama/PT-P300BT && cd PT-P300BT
-pip install -r requirements.txt
+uv sync
+```
+
+[uv](https://docs.astral.sh/uv/) installs the dependencies into `.venv`. Run the tools with `uv run`, for example:
+
+```
+uv run python printlabel.py --gui
 ```
 
 ## Running the Web GUI
 
-Serve the folder over HTTP (Web Serial requires a secure context; `file://` works for the preview but not for the serial port):
+Web Serial needs a secure context, so run the page from a server:
 
 ```bash
-cd web
-python -m http.server 8000
+mise run dev
 # then open http://localhost:8000/ in Chrome or Edge
 ```
 
@@ -337,20 +341,9 @@ When the browser does not expose the Web Serial API, the page shows an
 informative banner explaining that printing is unavailable and which
 browsers to use; the preview and every label algorithm keep working.
 
-### Tests for the JS component
+### Development
 
-```bash
-node web/test_printer.mjs   # protocol + print flow (40 tests)
-node web/test_label.mjs     # label algorithms (35 tests, needs `npm i canvas`)
-node web/test_web.mjs       # end-to-end GUI in Chrome + WebKit (45 tests)
-```
-
-The browser test (`test_web.mjs`) drives the real page with Playwright: it
-checks the preview, every control, zoom, the converted-raster view,
-ligatures, emoji, multiline, uniform font, fixed width, save PNG, the print
-guard, image merge, the full print flow with a mocked serial port, and the
-"unsupported browser" banner (verified with WebKit, which has no Web Serial).
-It needs a local server (`npm run serve`) and `npx playwright install chrome webkit`.
+Refer to [CONTRIBUTING.md](CONTRIBUTING.md) for the set-up, the tests and the lint tools.
 
 ## Code dependency structure
 
@@ -370,14 +363,14 @@ graph LR
     native/ptprobe.py --> native/btnative.py[btnative.py - macOS]
 
     subgraph Project_Support_Files[Project Support Files]
-        requirements[requirements.txt]
+        requirements[pyproject.toml]
         spec[printlabel.spec]
         readme[README.md]
     end
 
     subgraph Tests[Tests]
-        test_print_status.py --> labelmaker.py
-        test_print_status.py --> ptstatus.py
+        tests/test_print_status.py --> labelmaker.py
+        tests/test_print_status.py --> ptstatus.py
     end
 
     classDef highlight fill:#ffeb3b,stroke:#fbc02d,stroke-width:3px;
@@ -426,6 +419,7 @@ The following steps allow connecting a Windows COM port to the Bluetooth printer
 Perform the device pairing.
 
 ## Windows Bluetooth Quirk
+
 - As [pytouch-cube](https://github.com/piksel/pytouch-cube) says, for the Brother Cube
   PT-300BT Label Maker:
   > After connecting to the device it will automatically disconnect again.
@@ -453,7 +447,7 @@ Usage: `python3 printlabel.py /dev/rfcomm0 FONT_NAME TEXT_TO_PRINT`
 Pair the printer in System Settings > Bluetooth. Then use one of these two connections.
 
 - **Web GUI:** Open the page in Chrome or Edge. Click **Connect printer**. Select the entry that does not start with `cu.`, for example `PT-P300BT0894 - Paired`.
-- **Python:** Use the `bt:` port, for example `python3 printlabel.py "bt:PT-P300" FONT_FILE "Hello"`. This connection needs `pyobjc-framework-IOBluetooth` from `requirements.txt`. Refer to [native/README.md](native/README.md).
+- **Python:** Use the `bt:` port, for example `uv run python printlabel.py "bt:PT-P300" FONT_FILE "Hello"`. `uv sync` installs the `pyobjc-framework-IOBluetooth` package that this connection needs. Refer to [native/README.md](native/README.md).
 
 Do not use the `/dev/cu.PT-P300BT*` port. The port opens, but macOS does not make a Bluetooth link to the printer. The printer does not send data on this port.
 
@@ -463,18 +457,18 @@ If you do not use the printer, it turns off. If all three attempts fail, turn on
 
 ## Creating an executable asset for the GUI
 
-To build an executable file via [pyinstaller](https://pyinstaller.org/en/stable/), first install *pyinstaller* with `pip install pyinstaller`.
+To build an executable file via [pyinstaller](https://pyinstaller.org/en/stable/), first install _pyinstaller_ with `uv sync --group build`.
 
-The *printlabel.spec* file helps building the executable program. Run it with the following command.
+The _printlabel.spec_ file helps building the executable program. Run it with the following command.
 
 ```
-pip install pyinstaller  # if not yet installed
-pyinstaller printlabel.spec
+uv sync --group build
+uv run pyinstaller printlabel.spec
 ```
 
-Then run the executable file created in the *dist/* folder.
+Then run the executable file created in the _dist/_ folder.
 
-This repository includes a Windows *printlabel.exe* executable file which is automatically generated by a [GitHub Action](https://github.com/Ircama/PT-P300BT/blob/main/.github/workflows/build.yml). It is packaged in a ZIP file named *printlabel.zip* and uploaded into the [Releases](https://github.com/Ircama/PT-P300BT/releases/latest) folder.
+This repository includes a Windows _printlabel.exe_ executable file which is automatically generated by a [GitHub Action](https://github.com/Ircama/PT-P300BT/blob/main/.github/workflows/build.yml). It is packaged in a ZIP file named _printlabel.zip_ and uploaded into the [Releases](https://github.com/Ircama/PT-P300BT/releases/latest) folder.
 
 ## Notes
 
@@ -497,7 +491,7 @@ This repository is based on the scripts included in the following Gists:
 
 The scripts convert text labels to appropriate images (including the first page of a PDF conversion with "pdf2image" and which requires poppler to be installed) compatible with 12mm width craft tapes like [TZe-131](https://www.brother-usa.com/products/tze131) or [TZe-231](https://www.brother-usa.com/products/tze231), tuned for the max allowed character size with this printer, regardless the used font. The scripts also include the code to drive the printer via serial Bluetooth interface.
 
-Comparing this repository with the PT-P300BT Gist, the Python *printlabel.py* program has been introduced, replacing *printlabel.cmd* and *printlabel.sh* with several enhancements; it avoids creating temporary image files, provides more accurate image processing and does not rely on ImageMagick. In addition, all options included in the original *labelmaker.py* module are available, with several extensions.
+Comparing this repository with the PT-P300BT Gist, the Python _printlabel.py_ program has been introduced, replacing _printlabel.cmd_ and _printlabel.sh_ with several enhancements; it avoids creating temporary image files, provides more accurate image processing and does not rely on ImageMagick. In addition, all options included in the original _labelmaker.py_ module are available, with several extensions.
 
 ## Code Development Mode
 

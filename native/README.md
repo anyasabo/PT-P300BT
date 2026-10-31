@@ -14,7 +14,7 @@ This is done **in pure Python via [PyObjC](https://pyobjc.readthedocs.io/)** —
 no Swift, no Xcode, no compile step:
 
 ```bash
-pip install pyobjc-framework-IOBluetooth   # already in requirements.txt (macOS only)
+uv sync   # installs pyobjc-framework-IOBluetooth on macOS
 ```
 
 ## Files

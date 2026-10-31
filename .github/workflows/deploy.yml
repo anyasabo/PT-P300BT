@@ -18,18 +18,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Stage static site
-        run: |
-          mkdir -p _site
-          cp web/index.html web/style.css web/app.js web/label.js web/printer.js web/favicon.ico web/README.md _site/
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+      - run: mise exec -- npm ci
+      - run: mise run build
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
-          path: _site
+          path: web/dist
 
   deploy:
     needs: build
@@ -40,4 +37,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

@@ -163,8 +163,13 @@ cython_debug/
 #.idea/
 devices.xml
 *.png
+!web/tests/**/*.png
 *.jpg
 
 # Node.js (web port test dependency)
 node_modules/
-package-lock.json
+web/dist/
+test-results/
+playwright-report/
+.ruff_cache/
+coverage/

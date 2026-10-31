@@ -2,7 +2,7 @@
 """Pure-Python (PyObjC) IOBluetooth RFCOMM probe for the PT-P300BT.
 
 Proves the native-Bluetooth approach works from Python with no Swift/Xcode:
-    pip install pyobjc-framework-IOBluetooth
+    uv sync
 
 Finds the paired printer, opens an RFCOMM channel via IOBluetooth, sends a
 status query, prints the 32-byte reply. Mirrors native/ptprobe.swift.
