@@ -6,20 +6,32 @@ import sys
 import threading
 import tkinter as tk
 import unicodedata
-from tkinter import filedialog, font as tkfont, messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, scrolledtext, ttk
+from tkinter import font as tkfont
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import printlabel  # noqa: E402  (imports Pillow etc. at module scope)
+import printlabel
 
 APP_TITLE = "PT-P300BT Label Designer"
 MAX_ZOOM = 2.0  # maximum zoom factor (200%)
 
 FONT_CHOICES = [
-    "arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf",
-    "cour.ttf", "times.ttf", "comic.ttf", "comicbd.ttf",
-    "georgia.ttf", "impact.ttf", "segoeui.ttf", "tahoma.ttf",
-    "verdana.ttf", "calibri.ttf", "consola.ttf",
+    "arial.ttf",
+    "arialbd.ttf",
+    "ariali.ttf",
+    "arialbi.ttf",
+    "cour.ttf",
+    "times.ttf",
+    "comic.ttf",
+    "comicbd.ttf",
+    "georgia.ttf",
+    "impact.ttf",
+    "segoeui.ttf",
+    "tahoma.ttf",
+    "verdana.ttf",
+    "calibri.ttf",
+    "consola.ttf",
 ]
 MAC_FONT_CHOICES = [
     "/System/Library/Fonts/Supplemental/Arial.ttf",
@@ -68,10 +80,16 @@ class Tooltip:
         # A single label: the whole help text stays in one contiguous box
         # (multi-line via \n inside the label), never a stack of separate
         # labels that look detached and interfere with scrolling.
-        ttk.Label(tip, text=self.text, background="#ffffe0",
-                  foreground="#000000", relief="solid",
-                  borderwidth=1, padding=(6, 3),
-                  justify="left").pack()
+        ttk.Label(
+            tip,
+            text=self.text,
+            background="#ffffe0",
+            foreground="#000000",
+            relief="solid",
+            borderwidth=1,
+            padding=(6, 3),
+            justify="left",
+        ).pack()
         self._tip = tip
 
     def _hide(self, _event=None):
@@ -91,168 +109,199 @@ HELPS = {
         "Font file used for the label text.\n"
         "Full path to a TrueType/OpenType font (*.ttf, *.otf, *.ttc).\n"
         "A bare file name is resolved against the system font folders.\n"
-        "Use the picker (\"...\") or the font browser (\"Browse...\") to "
-        "choose visually."),
+        'Use the picker ("...") or the font browser ("Browse...") to '
+        "choose visually."
+    ),
     "text": (
         "Label text, one line per row.\n"
-        "Each newline becomes a separate label line (same as \"\\n\" in the "
+        'Each newline becomes a separate label line (same as "\\n" in the '
         "CLI).\n"
-        "Keep the total print length under 49.9 cm."),
+        "Keep the total print length under 49.9 cm."
+    ),
     "center_text": (
         "Center each label line horizontally (-H).\n"
-        "Off: lines are left-aligned. On: lines are centered on the tape."),
+        "Off: lines are left-aligned. On: lines are centered on the tape."
+    ),
     "emoji_print_area": (
         "Size emoji to fill the printable area (--emoji-print-area).\n"
         "On: emoji are scaled to fill the full 9 mm print height, the same "
         "way merged images are sized.\n"
-        "Off: emoji keep their line height, sized to the row they are on."),
+        "Off: emoji keep their line height, sized to the row they are on."
+    ),
     "mono_emoji": (
         "Show emoji in black and white.\n"
         "On (default): emoji render as black ink in the text box, in the "
         "preview and on the print — exactly what the 1-bit thermal printer "
         "produces.\n"
         "Off: emoji keep their embedded colors on screen (the printed "
-        "result is still 1-bit black)."),
+        "result is still 1-bit black)."
+    ),
     "uniform_font": (
         "Uniform font sizing (--uniform-font).\n"
-        "On: the auto-fit measures a standard sample (\"Ag\", covering "
+        'On: the auto-fit measures a standard sample ("Ag", covering '
         "ascents and descents) instead of the actual text, so all labels "
         "with the same number of lines use the same font size.\n"
-        "Useful when printing a batch where \"cao\" should not come out "
-        "larger than \"ciao\"."),
+        'Useful when printing a batch where "cao" should not come out '
+        'larger than "ciao".'
+    ),
     "ligatures": (
         "OpenType GSUB feature (--ligatures FEATURE).\n"
-        "Pick a feature tag that the selected font actually exposes \""
-        "(use --list-ligatures on the command line to see them, e.g. \""
-        "calt for the arrows of Fira Code, liga for standard ligatures, \""
-        "dlig for discretionary ones). Text is shaped with HarfBuzz, but \""
-        "only the substituted (ligature) glyphs are drawn differently: all \""
-        "normal characters stay exactly as they are. Empty = off. \""
-        "Requires uharfbuzz."),
+        'Pick a feature tag that the selected font actually exposes "'
+        '(use --list-ligatures on the command line to see them, e.g. "'
+        'calt for the arrows of Fira Code, liga for standard ligatures, "'
+        'dlig for discretionary ones). Text is shaped with HarfBuzz, but "'
+        'only the substituted (ligature) glyphs are drawn differently: all "'
+        'normal characters stay exactly as they are. Empty = off. "'
+        "Requires uharfbuzz."
+    ),
     "luma_lo": (
         "Monochrome emoji cut, low (--luma-lo).\n"
         "Luminance below this value becomes solid black ink. "
-        "Default 140."),
+        "Default 140."
+    ),
     "luma_hi": (
         "Monochrome emoji cut, high (--luma-hi).\n"
         "Luminance above this value becomes transparent (the white label "
         "shows through). Values between LO and HI fade smoothly. "
-        "Default 175."),
+        "Default 175."
+    ),
     "tab_width": (
         "TAB width in spaces (--tab-width).\n"
         "TAB characters in the text are expanded to this many spaces "
-        "(default 8) so they never print as a square box."),
+        "(default 8) so they never print as a square box."
+    ),
     "font_scale": (
         "Font scale factor in percent.\n"
         "100 = the natural font size. Values < 100 shrink the text,\n"
-        "values > 100 enlarge it. Scales proportionally per line."),
+        "values > 100 enlarge it. Scales proportionally per line."
+    ),
     "tape_width": (
         "Printable tape width in mm (default 12).\n"
         "The PT-P300BT prints on 12 mm tape with a fixed raster; values "
         "below 12 (e.g. 6, 9) shrink the printable band the text is "
-        "auto-sized to, keeping the raster compatible with the device."),
+        "auto-sized to, keeping the raster compatible with the device."
+    ),
     "line_spacing": (
         "Line spacing multiplier.\n"
         "1.0 = single spacing; 1.2 = 20% extra space between lines.\n"
-        "Useful when multiple label lines must fit a fixed tape length."),
+        "Useful when multiple label lines must fit a fixed tape length."
+    ),
     "h_padding": (
         "Horizontal padding in dots (1 dot = 1/203 inch).\n"
         "Extra blank tape before the first pixel and after the last pixel."
-        "Minimum is 0; values too large may exceed the 49.9 cm limit."),
+        "Minimum is 0; values too large may exceed the 49.9 cm limit."
+    ),
     "v_shift": (
         "Vertical shift in dots.\n"
         "Moves the whole label up (negative = toward the top edge,\n"
-        "positive = toward the bottom edge) in the 128-dot grid."),
+        "positive = toward the bottom edge) in the 128-dot grid."
+    ),
     "text_size": (
         "Exact text width in mm (0 = auto).\n"
         "Force the label to be exactly this wide, scaling the font\n"
-        "proportionally. Ignored when 0."),
+        "proportionally. Ignored when 0."
+    ),
     "fixed_width": (
         "Fixed tape length in mm (0 = off).\n"
         "Pad/shrink the label to exactly this many millimeters.\n"
-        "Ignored when 0."),
+        "Ignored when 0."
+    ),
     "fixed_font_size": (
         "Fixed font size in points (0 = auto).\n"
-        "Use an exact font size instead of auto-fitting. Ignored when 0."),
+        "Use an exact font size instead of auto-fitting. Ignored when 0."
+    ),
     "fill": (
         "Text fill color (name or hex, e.g. black, #ff0000).\n"
         "Only pure black is truly dark on most tape colors; other colors "
-        "print as grayscale."),
+        "print as grayscale."
+    ),
     "stroke_fill": (
         "Text outline color (name or hex; empty = no outline).\n"
-        "Adds a stroke around each glyph, useful on light tape."),
+        "Adds a stroke around each glyph, useful on light tape."
+    ),
     "stroke_width": (
-        "Outline thickness in pixels (0 = no outline).\n"
-        "Larger values make the text bolder."),
+        "Outline thickness in pixels (0 = no outline).\nLarger values make the text bolder."
+    ),
     "end_margin": (
         "Extra blank tape at the end of the label in dots.\n"
-        "Appends margin after the last pixel (top-bottom for portrait)."),
+        "Appends margin after the last pixel (top-bottom for portrait)."
+    ),
     "unicode": (
         "Interpret the text with \\uXXXX escapes (-u).\n"
-        "Off: escape sequences are printed literally."),
+        "Off: escape sequences are printed literally."
+    ),
     "lines": (
         "Show rulers and guide lines on the image (-l).\n"
-        "Draws a ruler and border lines on the preview/label image."),
+        "Draws a ruler and border lines on the preview/label image."
+    ),
     "image": (
         "Legacy single image to merge (-i).\n"
         "A PNG/JPG/GIF/BMP/PDF placed on the tape. For multiple images\n"
-        "use the merge list instead."),
+        "use the merge list instead."
+    ),
     "merge_list": (
         "Merge image files to print side by side (-M, repeatable).\n"
         "Each image is composited onto the label; order matters.\n"
-        "Use \"Add merge image\" to append and \"Remove selected\" to "
-        "delete."),
+        'Use "Add merge image" to append and "Remove selected" to '
+        "delete."
+    ),
     "resize": (
-        "Scale factor for merged images (-R).\n"
-        "1.0 = original size; 0.5 = half; 2.0 = double."),
-    "x_merge": (
-        "Horizontal position offset for merged images (-X, dots)."),
-    "y_merge": (
-        "Vertical position offset for merged images (-Y, dots)."),
-    "merge_gap": (
-        "Gap between merged images in dots.\n"
-        "0 = images touch edge to edge."),
+        "Scale factor for merged images (-R).\n1.0 = original size; 0.5 = half; 2.0 = double."
+    ),
+    "x_merge": ("Horizontal position offset for merged images (-X, dots)."),
+    "y_merge": ("Vertical position offset for merged images (-Y, dots)."),
+    "merge_gap": ("Gap between merged images in dots.\n0 = images touch edge to edge."),
     "white_level": (
         "White threshold for the legacy -i image (0-255).\n"
-        "Pixels brighter than this are treated as blank."),
+        "Pixels brighter than this are treated as blank."
+    ),
     "threshold": (
         "Binarization threshold for merged images (0-255).\n"
-        "Pixels darker than this become black, the rest white."),
+        "Pixels darker than this become black, the rest white."
+    ),
     "comport": (
         "Printer port.\n"
         "COM port on Windows, or bt:NAME / bt:MAC for Bluetooth.\n"
         "Examples: COM4, bt:PT-P300, bt:68:84:7e:61:5a:2f.\n"
-        "Use \"Refresh\" to rescan serial and Bluetooth devices."),
+        'Use "Refresh" to rescan serial and Bluetooth devices.'
+    ),
     "no_print": (
         "Simulation mode (-n): no paper output.\n"
         "Builds the label and shows the raster but never sends data to "
-        "the printer."),
+        "the printer."
+    ),
     "auto_cut": (
         "Cut the tape automatically after printing (-a).\n"
-        "Requires a printer with an auto-cutter (PT-P300 series)."),
+        "Requires a printer with an auto-cutter (PT-P300 series)."
+    ),
     "no_feed": (
-        "Disable the end-of-label feed (-F).\n"
-        "Chains labels back-to-back without the feed gap."),
+        "Disable the end-of-label feed (-F).\nChains labels back-to-back without the feed gap."
+    ),
     "raw": (
         "Send the raster raw without built-in formatting (-r).\n"
-        "For custom drivers or hand-crafted raster data."),
+        "For custom drivers or hand-crafted raster data."
+    ),
     "nocomp": (
         "Disable RLE compression (-C).\n"
         "Sends uncompressed raster data; slightly slower but "
-        "compatibility-safe."),
+        "compatibility-safe."
+    ),
     "preview_conv": (
         "Show the converted raster in the preview.\n"
         "What you see is exactly what is sent to the printer "
-        "(1-bit, rotated)."),
+        "(1-bit, rotated)."
+    ),
     "auto_preview": (
         "Live preview.\n"
         "Regenerate the preview automatically whenever any control changes;"
-        " turn off on slow machines."),
+        " turn off on slow machines."
+    ),
     "zoom": (
         "Preview zoom.\n"
         "Fit = scale the tape to fit the window.\n"
         "100/150/200% = fixed magnification (max 200%).\n"
-        "Ctrl+wheel zooms, wheel pans when zoomed."),
+        "Ctrl+wheel zooms, wheel pans when zoomed."
+    ),
 }
 
 
@@ -269,8 +318,7 @@ class LabelGUI(tk.Tk):
         # without an Accent.TButton layout (just keeps the default look).
         self._style = ttk.Style(self)
         try:
-            self._style.configure("Accent.TButton",
-                                  font=("Segoe UI", 10, "bold"))
+            self._style.configure("Accent.TButton", font=("Segoe UI", 10, "bold"))
         except Exception:
             pass
 
@@ -281,12 +329,11 @@ class LabelGUI(tk.Tk):
         # it always spans the full window width). A little breathing room
         # separates it from the two columns above.
         self.status = tk.StringVar(value="Ready.")
-        ttk.Label(outer, textvariable=self.status, anchor="w",
-                  relief="sunken", padding=(6, 3)).pack(
-            side="bottom", fill="x", pady=(6, 0))
+        ttk.Label(
+            outer, textvariable=self.status, anchor="w", relief="sunken", padding=(6, 3)
+        ).pack(side="bottom", fill="x", pady=(6, 0))
 
-        columns = tk.PanedWindow(outer, orient="horizontal",
-                                 sashwidth=3, sashrelief="raised")
+        columns = tk.PanedWindow(outer, orient="horizontal", sashwidth=3, sashrelief="raised")
         columns.pack(side="top", fill="both", expand=True)
 
         controls = ttk.Frame(columns, width=400)
@@ -321,24 +368,25 @@ class LabelGUI(tk.Tk):
         # Always show the scrollbar (visible affordance), even when the
         # content fits: ttk auto-hides it, which made it look missing.
         style = ttk.Style(self)
-        style.layout("Always.Vertical.TScrollbar",
-                     style.layout("Vertical.TScrollbar"))
+        style.layout("Always.Vertical.TScrollbar", style.layout("Vertical.TScrollbar"))
         sb.configure(style="Always.Vertical.TScrollbar")
         sb.configure(command=canvas.yview)
         frame = ttk.Frame(canvas, padding=4)
         frame.columnconfigure(0, weight=1)  # stretch groups full width
-        frame.bind("<Configure>", lambda e: canvas.configure(
-            scrollregion=canvas.bbox("all")))
+        frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         # Bind the inner frame width to the canvas width so the controls fill
         # the column and the vertical scrollbar appears when they overflow.
         canvas.create_window((0, 0), window=frame, anchor="nw", tags="inner")
-        canvas.bind("<Configure>", lambda e: canvas.itemconfigure(
-            "inner", width=e.width))
+        canvas.bind("<Configure>", lambda e: canvas.itemconfigure("inner", width=e.width))
         # Always show the scrollbar as enabled: report a fixed fraction so
         # ttk never greys it out, and keep the real scroll behavior.
-        canvas.configure(yscrollcommand=lambda first, last: sb.set(0.0, 1.0)
-                         if float(first) == 0.0 and float(last) == 1.0
-                         else sb.set(first, last))
+        canvas.configure(
+            yscrollcommand=lambda first, last: (
+                sb.set(0.0, 1.0)
+                if float(first) == 0.0 and float(last) == 1.0
+                else sb.set(first, last)
+            )
+        )
         canvas.pack(side="left", fill="both", expand=True)
         sb.pack(side="right", fill="y")
 
@@ -357,11 +405,21 @@ class LabelGUI(tk.Tk):
                 node = node.master
             if node is not canvas:
                 return
-            if isinstance(e.widget, (tk.Listbox, tk.Text, ttk.Combobox,
-                                     ttk.Spinbox, scrolledtext.ScrolledText,
-                                     ttk.Scrollbar, ttk.Treeview)):
+            if isinstance(
+                e.widget,
+                (
+                    tk.Listbox,
+                    tk.Text,
+                    ttk.Combobox,
+                    ttk.Spinbox,
+                    scrolledtext.ScrolledText,
+                    ttk.Scrollbar,
+                    ttk.Treeview,
+                ),
+            ):
                 return
             canvas.yview_scroll(int(-e.delta / 120), "units")
+
         canvas.bind_all("<MouseWheel>", _wheel)
 
         self.vars = {}
@@ -407,8 +465,7 @@ class LabelGUI(tk.Tk):
             if expert:
                 state["open"] = False
                 body.grid_remove()
-                lbl = tk.Label(lf, text="▶", cursor="hand2",
-                               font=("Segoe UI", 9))
+                lbl = tk.Label(lf, text="▶", cursor="hand2", font=("Segoe UI", 9))
                 lbl.grid(row=0, column=2, sticky="e")
                 lbl.bind("<Button-1>", toggle)
                 state["marker"] = lbl
@@ -424,20 +481,26 @@ class LabelGUI(tk.Tk):
         def _changed(*_):
             self._schedule_preview()
 
-        def entry(g, label, key, default="", browse=None,
-                  filetypes=(("All files", "*.*"),)):
+        def entry(g, label, key, default="", browse=None, filetypes=(("All files", "*.*"),)):
             var = tk.StringVar(value=default)
             self.vars[key] = var
             f = ttk.Frame(g)
-            f.grid(row=len(g.grid_size()[1]) - 1 if False else g.grid_size()[1],
-                   column=0, columnspan=3, sticky="ew", pady=1)
+            f.grid(
+                row=len(g.grid_size()[1]) - 1 if False else g.grid_size()[1],
+                column=0,
+                columnspan=3,
+                sticky="ew",
+                pady=1,
+            )
             ttk.Label(f, text=label, width=17).pack(side="left")
             e = ttk.Entry(f, textvariable=var)
             e.pack(side="left", fill="x", expand=True)
             help_text = HELPS.get(key)
             if help_text:
-                Tooltip(e, help_text); Tooltip(f, help_text)
+                Tooltip(e, help_text)
+                Tooltip(f, help_text)
             if browse:
+
                 def pick():
                     fn = filedialog.askopenfilename(filetypes=filetypes)
                     if fn:
@@ -445,8 +508,8 @@ class LabelGUI(tk.Tk):
                         _changed()
                         if key == "fontname":
                             self._sync_font_combo()
-                ttk.Button(f, text="...", width=3, command=pick).pack(
-                    side="left", padx=2)
+
+                ttk.Button(f, text="...", width=3, command=pick).pack(side="left", padx=2)
             var.trace_add("write", _changed)
 
         def pair(g, label, key, default="", validate=None):
@@ -459,17 +522,16 @@ class LabelGUI(tk.Tk):
             e.grid(row=r, column=1, sticky="ew", pady=1)
             help_text = HELPS.get(key)
             if help_text:
-                Tooltip(lab, help_text); Tooltip(e, help_text)
+                Tooltip(lab, help_text)
+                Tooltip(e, help_text)
             var.trace_add("write", _changed)
             return var
 
         def check(g, label, key, command=_changed, default=False):
             var = tk.BooleanVar(value=default)
             self.vars[key] = var
-            cb = ttk.Checkbutton(g, text=label, variable=var,
-                                 command=command)
-            cb.grid(row=g.grid_size()[1], column=0, columnspan=3,
-                    sticky="w", pady=1)
+            cb = ttk.Checkbutton(g, text=label, variable=var, command=command)
+            cb.grid(row=g.grid_size()[1], column=0, columnspan=3, sticky="w", pady=1)
             help_text = HELPS.get(key)
             if help_text:
                 Tooltip(cb, help_text)
@@ -481,12 +543,12 @@ class LabelGUI(tk.Tk):
             r = g.grid_size()[1]
             lab = ttk.Label(g, text=label)
             lab.grid(row=r, column=0, sticky="w", pady=1)
-            cb = ttk.Combobox(g, textvariable=var, values=values,
-                              state="readonly", width=20)
+            cb = ttk.Combobox(g, textvariable=var, values=values, state="readonly", width=20)
             cb.grid(row=r, column=1, sticky="w", pady=1)
             help_text = HELPS.get(key)
             if help_text:
-                Tooltip(lab, help_text); Tooltip(cb, help_text)
+                Tooltip(lab, help_text)
+                Tooltip(cb, help_text)
             var.trace_add("write", command)
             return var
 
@@ -497,11 +559,9 @@ class LabelGUI(tk.Tk):
         tf = ttk.Frame(g)
         tf.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 4))
         tf.columnconfigure(0, weight=1)
-        self.text_box = tk.Text(tf, width=28, height=4, wrap="word",
-                                font=("Segoe UI", 10))
+        self.text_box = tk.Text(tf, width=28, height=4, wrap="word", font=("Segoe UI", 10))
         self.text_box.grid(row=0, column=0, sticky="ew")
-        tsb = ttk.Scrollbar(tf, orient="vertical",
-                            command=self.text_box.yview)
+        tsb = ttk.Scrollbar(tf, orient="vertical", command=self.text_box.yview)
         self.text_box.configure(yscrollcommand=tsb.set)
         tsb.grid(row=0, column=1, sticky="ns")
         self.text_box.bind("<<Modified>>", self._on_text_modified)
@@ -513,8 +573,14 @@ class LabelGUI(tk.Tk):
         self.text_box.bind("<Control-c>", self._copy_with_emoji)
         self.text_box.bind("<Control-X>", self._cut_with_emoji)
         Tooltip(self.text_box, HELPS["text"])
-        entry(g, "Font file:", "fontname", self._default_font(), browse=True,
-              filetypes=(("Font files", "*.ttf *.otf *.ttc"), ("All", "*.*")))
+        entry(
+            g,
+            "Font file:",
+            "fontname",
+            self._default_font(),
+            browse=True,
+            filetypes=(("Font files", "*.ttf *.otf *.ttc"), ("All", "*.*")),
+        )
         self.vars["fontname"] = self.vars.get("fontname", tk.StringVar())
         fb = ttk.Frame(g)
         fb.grid(row=g.grid_size()[1], column=0, columnspan=3, sticky="ew")
@@ -522,26 +588,27 @@ class LabelGUI(tk.Tk):
         self.font_combo.pack(side="left", fill="x", expand=True)
         self.font_combo.bind("<<ComboboxSelected>>", self._on_font_picked)
         Tooltip(self.font_combo, HELPS["fontname"])
-        ttk.Button(fb, text="Browse...",
-                   command=self._browse_fonts).pack(side="left", padx=4)
+        ttk.Button(fb, text="Browse...", command=self._browse_fonts).pack(side="left", padx=4)
         self.after(50, self._load_font_combo)
         check(g, "Center text (-H)", "center_text")
-        check(g, "Emoji fill print area (--emoji-print-area)",
-              "emoji_print_area")
-        check(g, "Emoji black & white (--mono-emoji)", "mono_emoji",
-              default=True, command=self._on_mono_toggled)
-        check(g, "Uniform font sizing (--uniform-font)",
-              "uniform_font")
+        check(g, "Emoji fill print area (--emoji-print-area)", "emoji_print_area")
+        check(
+            g,
+            "Emoji black & white (--mono-emoji)",
+            "mono_emoji",
+            default=True,
+            command=self._on_mono_toggled,
+        )
+        check(g, "Uniform font sizing (--uniform-font)", "uniform_font")
         # OpenType GSUB feature selector: the values are filled from the
         # selected font's GSUB table (see _refresh_ligature_combo).
         self.vars.setdefault("ligatures", tk.StringVar(value=""))
         lg = ttk.Frame(g)
-        lg.grid(row=g.grid_size()[1], column=0, columnspan=3, sticky="ew",
-                pady=1)
+        lg.grid(row=g.grid_size()[1], column=0, columnspan=3, sticky="ew", pady=1)
         ttk.Label(lg, text="Ligature feature:", width=17).pack(side="left")
         self.ligature_combo = ttk.Combobox(
-            lg, textvariable=self.vars["ligatures"], state="readonly",
-            width=22, values=[""])
+            lg, textvariable=self.vars["ligatures"], state="readonly", width=22, values=[""]
+        )
         self.ligature_combo.pack(side="left", fill="x", expand=True)
         self.ligature_combo.bind("<<ComboboxSelected>>", _changed)
         Tooltip(self.ligature_combo, HELPS["ligatures"])
@@ -571,18 +638,19 @@ class LabelGUI(tk.Tk):
         # ---------------- Images ----------------
         g = group("Images (merge -M / legacy -i)", expert=True)
         self.merge_list = tk.Listbox(g, height=3)
-        self.merge_list.grid(row=0, column=0, columnspan=3,
-                             sticky="ew", pady=2)
+        self.merge_list.grid(row=0, column=0, columnspan=3, sticky="ew", pady=2)
         Tooltip(self.merge_list, HELPS["merge_list"])
         fb = ttk.Frame(g)
         fb.grid(row=1, column=0, columnspan=3, sticky="w")
-        ttk.Button(fb, text="Add merge image (-M)...",
-                   command=self._add_merge).pack(side="left")
-        ttk.Button(fb, text="Remove selected", command=self._del_merge).pack(
-            side="left", padx=4)
-        entry(g, "Legacy image (-i):", "image", browse=True,
-              filetypes=(("Images", "*.png *.jpg *.jpeg *.gif *.bmp *.pdf"),
-                         ("All", "*.*")))
+        ttk.Button(fb, text="Add merge image (-M)...", command=self._add_merge).pack(side="left")
+        ttk.Button(fb, text="Remove selected", command=self._del_merge).pack(side="left", padx=4)
+        entry(
+            g,
+            "Legacy image (-i):",
+            "image",
+            browse=True,
+            filetypes=(("Images", "*.png *.jpg *.jpeg *.gif *.bmp *.pdf"), ("All", "*.*")),
+        )
         pair(g, "Resize (-R):", "resize", 1.0)
         pair(g, "X merge (-X):", "x_merge", 0)
         pair(g, "Y merge (-Y):", "y_merge", 12)
@@ -599,8 +667,7 @@ class LabelGUI(tk.Tk):
         self.port_combo = ttk.Combobox(pf, textvariable=self.vars["comport"])
         self.port_combo.pack(side="left", fill="x", expand=True)
         Tooltip(self.port_combo, HELPS["comport"])
-        ttk.Button(pf, text="Refresh", command=self._refresh_ports).pack(
-            side="left", padx=2)
+        ttk.Button(pf, text="Refresh", command=self._refresh_ports).pack(side="left", padx=2)
         self.vars["comport"].trace_add("write", lambda *a: None)
         check(g, "No print (-n, no paper output)", "no_print")
         check(g, "Auto cut (-a)", "auto_cut")
@@ -614,14 +681,15 @@ class LabelGUI(tk.Tk):
         g = group("Preview")
         self.vars["preview_conv"] = tk.BooleanVar(value=False)
         pc = ttk.Checkbutton(
-            g, text="Show converted raster (as sent to printer)",
+            g,
+            text="Show converted raster (as sent to printer)",
             variable=self.vars["preview_conv"],
-            command=self._schedule_preview)
+            command=self._schedule_preview,
+        )
         pc.grid(row=0, column=0, columnspan=3, sticky="w")
         Tooltip(pc, HELPS["preview_conv"])
         self.vars["auto_preview"] = tk.BooleanVar(value=True)
-        ap = ttk.Checkbutton(
-            g, text="Live preview", variable=self.vars["auto_preview"])
+        ap = ttk.Checkbutton(g, text="Live preview", variable=self.vars["auto_preview"])
         ap.grid(row=1, column=0, columnspan=3, sticky="w")
         Tooltip(ap, HELPS["auto_preview"])
 
@@ -641,17 +709,14 @@ class LabelGUI(tk.Tk):
         tb = ttk.Frame(pv)
         tb.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 4))
         self._zoom_mode = tk.StringVar(value="Fit")
-        ttk.Button(tb, text="−", width=3, command=self._zoom_out).grid(
-            row=0, column=0, padx=(0, 2))
-        ttk.Button(tb, text="+", width=3, command=self._zoom_in).grid(
-            row=0, column=1)
+        ttk.Button(tb, text="−", width=3, command=self._zoom_out).grid(row=0, column=0, padx=(0, 2))
+        ttk.Button(tb, text="+", width=3, command=self._zoom_in).grid(row=0, column=1)
         ttk.Button(tb, text="Fit", command=lambda: self._set_zoom("Fit")).grid(
-            row=0, column=2, padx=2)
-        ttk.Button(tb, text="1:1 tape", command=self._set_tape_zoom).grid(
-            row=0, column=3, padx=2)
+            row=0, column=2, padx=2
+        )
+        ttk.Button(tb, text="1:1 tape", command=self._set_tape_zoom).grid(row=0, column=3, padx=2)
         self.zoom_info = tk.StringVar(value="")
-        ttk.Label(tb, textvariable=self.zoom_info).grid(
-            row=0, column=4, padx=6, sticky="w")
+        ttk.Label(tb, textvariable=self.zoom_info).grid(row=0, column=4, padx=6, sticky="w")
         tb.columnconfigure(4, weight=1)
 
         # Scrollable canvas
@@ -680,19 +745,22 @@ class LabelGUI(tk.Tk):
 
         # The rendered image
         self._canvas_image = None
-        self._pil_img = None          # current PIL image at native size
-        self._zoom = None             # None => "Fit"
+        self._pil_img = None  # current PIL image at native size
+        self._zoom = None  # None => "Fit"
 
         # Output log: compact, fixed height (does not squeeze the preview)
         logf = ttk.LabelFrame(pwin, text="Output", padding=6)
         pwin.add(logf, weight=1)
-        Tooltip(logf, (
-            "Output log.\n"
-            "Shows what the app is doing: port connections, print progress,\n"
-            "errors and status messages. Read-only; the log is not cleared\n"
-            "until the app closes."))
-        self.log = scrolledtext.ScrolledText(logf, height=5, state="disabled",
-                                             font=("Consolas", 9))
+        Tooltip(
+            logf,
+            (
+                "Output log.\n"
+                "Shows what the app is doing: port connections, print progress,\n"
+                "errors and status messages. Read-only; the log is not cleared\n"
+                "until the app closes."
+            ),
+        )
+        self.log = scrolledtext.ScrolledText(logf, height=5, state="disabled", font=("Consolas", 9))
         self.log.pack(fill="both", expand=True)
 
         # Action bar as its own pane under the output log: always visible,
@@ -700,17 +768,15 @@ class LabelGUI(tk.Tk):
         # the sash between log and actions stays draggable.
         actf = ttk.Frame(pwin)
         pwin.add(actf, weight=0)
-        ttk.Button(actf, text="Refresh preview (F5)",
-                   command=self._schedule_preview).pack(
-            side="left", padx=(12, 1))
-        ttk.Button(actf, text="Save PNG...",
-                   command=self._save_png).pack(side="left", padx=1)
-        self.print_btn = ttk.Button(actf, text="PRINT",
-                                    style="Accent.TButton",
-                                    command=self._do_print)
+        ttk.Button(actf, text="Refresh preview (F5)", command=self._schedule_preview).pack(
+            side="left", padx=(12, 1)
+        )
+        ttk.Button(actf, text="Save PNG...", command=self._save_png).pack(side="left", padx=1)
+        self.print_btn = ttk.Button(
+            actf, text="PRINT", style="Accent.TButton", command=self._do_print
+        )
         self.print_btn.pack(side="right", padx=(4, 0))
-        ttk.Button(actf, text="Quit",
-                   command=self.destroy).pack(side="right")
+        ttk.Button(actf, text="Quit", command=self.destroy).pack(side="right")
 
         # Make the native sash clearly visible and easy to grab via ttk style
         # (a thick, light band with a grip). No extra widget is inserted
@@ -726,8 +792,7 @@ class LabelGUI(tk.Tk):
         # then drag the sash to taste.
         self.after(50, lambda: self._set_default_sash())
         # Re-apply once mapped (winfo_height is 1 before the window is mapped)
-        self.bind("<Map>", lambda e: self.after(10, self._set_default_sash),
-                  add="+")
+        self.bind("<Map>", lambda e: self.after(10, self._set_default_sash), add="+")
 
         # Keyboard shortcuts
         self.bind("<Control-p>", lambda e: self._do_print())
@@ -781,6 +846,7 @@ class LabelGUI(tk.Tk):
             tree.insert(parent, "end", iid=iid, text=text, open=True)
             for c in w.winfo_children():
                 add(c, iid)
+
         add(self, "")
 
     # ---- zoom / pan helpers ----
@@ -848,6 +914,7 @@ class LabelGUI(tk.Tk):
         if self._pil_img is None:
             return
         from PIL import Image, ImageTk
+
         img = self._pil_img
         if self._zoom_mode.get() == "Fit" or self._zoom is None:
             scale = self._fit_scale()
@@ -859,10 +926,9 @@ class LabelGUI(tk.Tk):
         shown = img.resize((w, h), resample)
         self._photo = ImageTk.PhotoImage(shown)
         self.canvas.delete("all")
-        self._canvas_image = self.canvas.create_image(
-            4, 4, image=self._photo, anchor="nw")
+        self._canvas_image = self.canvas.create_image(4, 4, image=self._photo, anchor="nw")
         self.canvas.configure(scrollregion=(0, 0, w + 8, h + 8))
-# If the tape is taller than the viewport at this zoom, scroll to the
+        # If the tape is taller than the viewport at this zoom, scroll to the
         # top edge so the label is flush with the canvas (no dead space).
         self.canvas.yview_moveto(0)
         self.zoom_info.set(f"{w}×{h}  ({scale * 100:.0f}%)")
@@ -900,6 +966,7 @@ class LabelGUI(tk.Tk):
     def _load_font_combo(self):
         try:
             from fontbrowser import list_system_fonts
+
             self._system_fonts = list_system_fonts()
             self.font_combo["values"] = [lbl for lbl, _ in self._system_fonts]
             self.status.set(f"{len(self._system_fonts)} system fonts found.")
@@ -951,6 +1018,7 @@ class LabelGUI(tk.Tk):
             if not hasattr(self, "ligature_combo"):
                 return
             from printlabel import _lig_features
+
             font_ref = self.vars["fontname"].get() or "arial.ttf"
             # The font reference may be a bare file name ("arial.ttf"), not
             # a path: resolve it through the system font list like the
@@ -960,6 +1028,7 @@ class LabelGUI(tk.Tk):
             if not os.path.isfile(font_ref):
                 try:
                     from fontbrowser import find_font_path
+
                     font_ref = find_font_path(font_ref) or font_ref
                 except Exception:
                     pass
@@ -984,6 +1053,7 @@ class LabelGUI(tk.Tk):
         if not getattr(self, "_system_fonts", None):
             try:
                 from fontbrowser import list_system_fonts
+
                 self._system_fonts = list_system_fonts()
             except Exception:
                 self._system_fonts = []
@@ -1011,8 +1081,7 @@ class LabelGUI(tk.Tk):
         sb.pack(side="right", fill="y")
 
         # Live sample: renders SAMPLE in the currently selected font.
-        preview = tk.Label(win, text="", bg="white", anchor="center",
-                           justify="left")
+        preview = tk.Label(win, text="", bg="white", anchor="center", justify="left")
         preview.pack(fill="both", expand=False, padx=6, pady=(0, 4))
 
         fonts = getattr(self, "_system_fonts", [])
@@ -1041,13 +1110,13 @@ class LabelGUI(tk.Tk):
                 # using the selected TTF. This is a faithful "what you see is
                 # what prints" preview that plain Tk fonts cannot give.
                 from PIL import Image, ImageDraw, ImageFont, ImageTk
+
                 size = 40
                 fnt = ImageFont.truetype(path, size)
                 w = preview.winfo_width() or 640
                 tmp = Image.new("RGB", (w, 56), "white")
                 d = ImageDraw.Draw(tmp)
-                d.text((8, (56 - size) // 2), SAMPLE, font=fnt,
-                       fill=(20, 20, 20))
+                d.text((8, (56 - size) // 2), SAMPLE, font=fnt, fill=(20, 20, 20))
                 ph = ImageTk.PhotoImage(tmp)
                 preview.configure(image=ph, text="")
                 preview._img = ph  # keep a reference
@@ -1081,8 +1150,7 @@ class LabelGUI(tk.Tk):
         # Pre-select the current font
         current = os.path.basename(self.vars["fontname"].get() or "")
         for i, lbl in enumerate(ordered):
-            if os.path.basename(font_path.get(lbl, "")).lower() == \
-                    current.lower():
+            if os.path.basename(font_path.get(lbl, "")).lower() == current.lower():
                 listbox.selection_clear(0, "end")
                 listbox.selection_set(i)
                 listbox.see(i)
@@ -1197,8 +1265,9 @@ class LabelGUI(tk.Tk):
             # If the emoji layout is unchanged the widget is already
             # correct (only plain characters were edited): keep it as-is
             # so the cursor position is preserved while typing.
-            if not force and self._emoji_sequence == \
-                    [c for c in real if printlabel.is_emoji_char(c)]:
+            if not force and self._emoji_sequence == [
+                c for c in real if printlabel.is_emoji_char(c)
+            ]:
                 return
 
             # Re-render everything.
@@ -1212,21 +1281,21 @@ class LabelGUI(tk.Tk):
             except Exception:
                 emoji_h = 17
             from PIL import Image, ImageTk
+
             mono = bool(self.vars["mono_emoji"].get())
             for ch in real:
                 if printlabel.is_emoji_char(ch):
-                    raster = printlabel.emoji_thumbnail(ch, emoji_h,
-                                                        mono=mono)
+                    raster = printlabel.emoji_thumbnail(ch, emoji_h, mono=mono)
                     if raster is not None:
                         # Flatten onto the widget background for crispness.
                         bg = tb.cget("background") or "#ffffff"
                         try:
                             from PIL import ImageColor
+
                             bg_rgb = ImageColor.getrgb(bg)
                         except Exception:
                             bg_rgb = (255, 255, 255)
-                        flat = Image.new("RGBA", raster.size,
-                                         bg_rgb + (255,))
+                        flat = Image.new("RGBA", raster.size, bg_rgb + (255,))
                         flat.alpha_composite(raster)
                         raster = flat.convert("RGB")
                         img = ImageTk.PhotoImage(raster)
@@ -1275,12 +1344,11 @@ class LabelGUI(tk.Tk):
             try:
                 val = cast(v[key].get())
                 return val
-            except (ValueError, TypeError, KeyError):
+            except ValueError, TypeError, KeyError:
                 return default
 
         text = self._get_text()
-        merge = [self.merge_list.get(i)
-                 for i in range(self.merge_list.size())] or None
+        merge = [self.merge_list.get(i) for i in range(self.merge_list.size())] or None
         image = v["image"].get().strip() or None
         if image:  # legacy mode: -i becomes first merge, text ignored
             merge = [image] + (merge or [])
@@ -1302,6 +1370,7 @@ class LabelGUI(tk.Tk):
         # directories, whatever the OS.
         try:
             from fontbrowser import find_font_path
+
             font_path = find_font_path(v["fontname"].get() or "arial.ttf")
         except Exception:
             font_path = v["fontname"].get() or "arial.ttf"
@@ -1362,8 +1431,7 @@ class LabelGUI(tk.Tk):
             self._preview_scheduled = True
             self.after(120, self._schedule_preview)
             return
-        if self.vars.get("auto_preview") and \
-                not self.vars["auto_preview"].get():
+        if self.vars.get("auto_preview") and not self.vars["auto_preview"].get():
             return
         self._preview_scheduled = True
         self.after(150, self._run_preview)
@@ -1383,24 +1451,27 @@ class LabelGUI(tk.Tk):
                 # Empty text: just clear the preview silently (no error).
                 if not args.text_to_print and not args.merge:
                     self.after(0, lambda: self._clear_preview())
-                    self.after(0, lambda: self.status.set(
-                        "Type some text to see the preview."))
+                    self.after(0, lambda: self.status.set("Type some text to see the preview."))
                     return
                 image = printlabel.build_label(args)
                 padded = printlabel.rasterize_label(image, args)
                 conv = padded.convert("L")
-                self.after(0, lambda: self._show_image(
-                    conv if self.vars["preview_conv"].get() else image))
-                self.after(0, lambda: self.status.set(
-                    f"{padded.width}x{padded.height} raster, "
-                    f"{padded.height * 0.149 / 10:.1f} cm of tape."))
+                self.after(
+                    0, lambda: self._show_image(conv if self.vars["preview_conv"].get() else image)
+                )
+                self.after(
+                    0,
+                    lambda: self.status.set(
+                        f"{padded.width}x{padded.height} raster, "
+                        f"{padded.height * 0.149 / 10:.1f} cm of tape."
+                    ),
+                )
             except printlabel._LabelError as e:
                 msg = str(e)
                 if "Null image" in msg:
                     # Empty label: clear silently instead of showing an error.
                     self.after(0, lambda: self._clear_preview())
-                    self.after(0, lambda: self.status.set(
-                        "Type some text to see the preview."))
+                    self.after(0, lambda: self.status.set("Type some text to see the preview."))
                     return
                 self.after(0, lambda m=msg: self.status.set(f"Invalid: {m}"))
                 self.after(0, lambda: self._clear_preview())
@@ -1410,6 +1481,7 @@ class LabelGUI(tk.Tk):
                 self.after(0, lambda m=msg: self._log(f"ERROR: {m}"))
             finally:
                 self._busy = False
+
         threading.Thread(target=worker, daemon=True).start()
 
     def _show_image(self, pil_img):
@@ -1433,15 +1505,15 @@ class LabelGUI(tk.Tk):
 
         frm = ttk.Frame(dlg, padding=16)
         frm.pack(fill="both", expand=True)
-        ttk.Label(frm, text=f"Send the label to '{port}'?",
-                  justify="center").grid(row=0, column=0, columnspan=2,
-                                         pady=(0, 10))
+        ttk.Label(frm, text=f"Send the label to '{port}'?", justify="center").grid(
+            row=0, column=0, columnspan=2, pady=(0, 10)
+        )
         btns = ttk.Frame(frm)
         btns.grid(row=1, column=0, columnspan=2)
-        ttk.Button(btns, text="Send", default="active",
-                   command=lambda: _finish(True)).pack(side="left", padx=4)
-        ttk.Button(btns, text="Cancel",
-                   command=lambda: _finish(False)).pack(side="left", padx=4)
+        ttk.Button(btns, text="Send", default="active", command=lambda: _finish(True)).pack(
+            side="left", padx=4
+        )
+        ttk.Button(btns, text="Cancel", command=lambda: _finish(False)).pack(side="left", padx=4)
 
         def _finish(ok):
             result["ok"] = ok
@@ -1501,6 +1573,7 @@ class LabelGUI(tk.Tk):
                         pass
                 self._busy = False
                 self.after(0, lambda: self.print_btn.state(["!disabled"]))
+
         threading.Thread(target=worker, daemon=True).start()
 
     # ------------------------------------------------------------------
@@ -1516,13 +1589,14 @@ class LabelGUI(tk.Tk):
         ports = []
         try:
             from serial.tools import list_ports
+
             ports += [p.device for p in list_ports.comports()]
         except Exception:
             pass
         try:
-            sys.path.insert(0, os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "native"))
-            from btcommon import list_devices as bt_list, BTError
+            sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "native"))
+            from btcommon import list_devices as bt_list
+
             for name, addr, chan in bt_list():
                 ports.append(f"bt:{name}")
         except Exception:
@@ -1532,8 +1606,8 @@ class LabelGUI(tk.Tk):
 
     def _add_merge(self):
         fn = filedialog.askopenfilename(
-            filetypes=(("Images", "*.png *.jpg *.jpeg *.gif *.bmp *.pdf"),
-                       ("All", "*.*")))
+            filetypes=(("Images", "*.png *.jpg *.jpeg *.gif *.bmp *.pdf"), ("All", "*.*"))
+        )
         if fn:
             self.merge_list.insert("end", fn)
             self._schedule_preview()
@@ -1546,7 +1620,8 @@ class LabelGUI(tk.Tk):
 
     def _save_png(self):
         fn = filedialog.asksaveasfilename(
-            defaultextension=".png", filetypes=(("PNG image", "*.png"),))
+            defaultextension=".png", filetypes=(("PNG image", "*.png"),)
+        )
         if not fn:
             return
         try:

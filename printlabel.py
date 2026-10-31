@@ -1,14 +1,13 @@
-import sys
-import os
-import re
 import argparse
+import os
+import sys
+
 import serial
-from serial.tools import list_ports
-from PIL import Image, ImageDraw, ImageFont, ImageOps
 from pdf2image import convert_from_path
+from PIL import Image, ImageDraw, ImageFont, ImageOps
+from serial.tools import list_ports
 
 from labelmaker import do_print_job, reset_printer
-
 
 # --------------------------------------------------------------------------
 # Emoji fallback: a wrapper font that renders every character with the
@@ -17,7 +16,7 @@ from labelmaker import do_print_job, reset_printer
 # drew those as empty .notdef boxes.
 # --------------------------------------------------------------------------
 _EMOJI_CANDIDATES = [
-    r"C:\Windows\Fonts\seguiemj.ttf",            # Segoe UI Emoji (Win 8+)
+    r"C:\Windows\Fonts\seguiemj.ttf",  # Segoe UI Emoji (Win 8+)
     r"C:\Windows\Fonts\SegoeUIEmoji.ttf",
     "/System/Library/Fonts/Apple Color Emoji.ttc",  # macOS
     "/System/Library/Fonts/Apple Color Emoji.ttf",
@@ -28,7 +27,7 @@ _EMOJI_CANDIDATES = [
 ]
 _emoji_path = None
 _emoji_cmap = None
-_CMAP_CACHE = {}      # path -> set(codepoints) cache for primary fonts
+_CMAP_CACHE = {}  # path -> set(codepoints) cache for primary fonts
 
 
 def _find_emoji_font():
@@ -37,6 +36,7 @@ def _find_emoji_font():
     if _emoji_path is not None:
         return _emoji_path, _emoji_cmap
     from fontTools.ttLib import TTFont
+
     for cand in _EMOJI_CANDIDATES:
         if os.path.exists(cand):
             try:
@@ -73,15 +73,11 @@ def is_emoji_char(ch):
     # Emoticons (1F600+), Transport (1F680+), Supplemental Symbols (1F900+),
     # Symbols and Pictographs Extended-A (1FA70+), Dingbats/Misc symbols,
     # plus the variation selector for emoji presentation.
-    if 0x1F000 <= cp <= 0x1FAFF:
+    if 0x1F000 <= cp <= 0x1FAFF or 0x2600 <= cp <= 0x27BF or 0x2B00 <= cp <= 0x2BFF:
         pass
-    elif 0x2600 <= cp <= 0x27BF:
-        pass
-    elif 0x2B00 <= cp <= 0x2BFF:
-        pass
-    elif 0xFE0F == cp:
+    elif cp == 0xFE0F:
         return False  # variation selector alone: no glyph (joiner)
-    elif 0x200D == cp:
+    elif cp == 0x200D:
         return False  # ZWJ alone: no glyph (joiner)
     elif 0x2300 <= cp <= 0x23FF and cp not in (0x23E9,):
         pass
@@ -105,8 +101,7 @@ def emoji_thumbnail(ch, height, mono=True):
     path, _cmap = _find_emoji_font()
     if not path:
         return None
-    raster, _w = _emoji_raster_to_height(
-        path, ch, max(8, int(height)), mono=mono)
+    raster, _w = _emoji_raster_to_height(path, ch, max(8, int(height)), mono=mono)
     return raster
 
 
@@ -138,12 +133,12 @@ def _luminance_mono(raster, lo=140.0, hi=175.0):
                 continue
             lum = 0.299 * r + 0.587 * g + 0.114 * b
             if lum <= LO:
-                pix[x, y] = (0, 0, 0, a)          # solid ink
+                pix[x, y] = (0, 0, 0, a)  # solid ink
             elif lum >= HI:
-                pix[x, y] = (0, 0, 0, 0)          # clear (white label)
+                pix[x, y] = (0, 0, 0, 0)  # clear (white label)
             else:
                 keep = int(round(a * (HI - lum) / (HI - LO)))
-                pix[x, y] = (0, 0, 0, keep)     # antialias ramp
+                pix[x, y] = (0, 0, 0, keep)  # antialias ramp
 
 
 def _emoji_raster_to_height(emoji_path, char, target_h, mono=False):
@@ -160,23 +155,28 @@ def _emoji_raster_to_height(emoji_path, char, target_h, mono=False):
     """
     try:
         from PIL import Image, ImageDraw, ImageFont
+
         # Render at 2x the target height for a smoother downscale.
         big = max(32, int(target_h * 2))
         f = ImageFont.truetype(emoji_path, big)
         pad = int(big * 0.6)
-        img = Image.new("RGBA", (big * 2 + pad * 2, big * 2 + pad * 2),
-                        (0, 0, 0, 0))
+        img = Image.new("RGBA", (big * 2 + pad * 2, big * 2 + pad * 2), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
         # Baseline at the vertical middle of the big canvas.
         asc, desc = f.getmetrics()
         if mono:
             # Base monochrome glyph (no embedded_color): the outline /
             # silhouette the OS text box draws. Rendered as black ink.
-            d.text((pad, pad + asc), char, font=f, fill=(0, 0, 0, 255),
-                   anchor="ls")
+            d.text((pad, pad + asc), char, font=f, fill=(0, 0, 0, 255), anchor="ls")
         else:
-            d.text((pad, pad + asc), char, font=f, fill=(0, 0, 0, 255),
-                   anchor="ls", embedded_color=True)
+            d.text(
+                (pad, pad + asc),
+                char,
+                font=f,
+                fill=(0, 0, 0, 255),
+                anchor="ls",
+                embedded_color=True,
+            )
         b = img.getbbox()
         if b is None:
             return None, 0
@@ -213,8 +213,16 @@ class _MixedFont:
     an emoji is exactly the space the drawn emoji takes.
     """
 
-    def __init__(self, primary, size, emoji_path, emoji_mode="line",
-                 uniform=False, mono=True, ligatures=False):
+    def __init__(
+        self,
+        primary,
+        size,
+        emoji_path,
+        emoji_mode="line",
+        uniform=False,
+        mono=True,
+        ligatures=False,
+    ):
         self.font = ImageFont.truetype(primary, size, encoding="utf-8")
         self.size = size
         self._ligatures = ligatures
@@ -244,15 +252,16 @@ class _MixedFont:
         else:
             try:
                 from fontTools.ttLib import TTFont
+
                 self._primary_cmap = set(TTFont(primary_path).getBestCmap())
                 _CMAP_CACHE[key] = self._primary_cmap
             except Exception:
                 self._primary_cmap = None
         # Emoji raster settings (filled in by build_label after the fit):
-        self._emoji_target_h = None     # raster height in px
-        self._emoji_band = False        # True = in-band (print position)
-        self._emoji_band_y = 0          # y to paste band emoji (print_border)
-        self._emoji_raster_cache = {}   # char -> (raster, width)
+        self._emoji_target_h = None  # raster height in px
+        self._emoji_band = False  # True = in-band (print position)
+        self._emoji_band_y = 0  # y to paste band emoji (print_border)
+        self._emoji_raster_cache = {}  # char -> (raster, width)
         self._emoji_path = emoji_path if emoji_path else None
 
     # -- helpers -----------------------------------------------------
@@ -261,8 +270,7 @@ class _MixedFont:
         if self._emoji_path is None or self._primary_cmap is None:
             return False
         cp = ord(ch)
-        return (0x1F600 in _emoji_cmap and cp in _emoji_cmap and
-                cp not in self._primary_cmap)
+        return 0x1F600 in _emoji_cmap and cp in _emoji_cmap and cp not in self._primary_cmap
 
     def _split(self, text):
         """Yield (font, chunk) runs: primary-font text vs emoji chars."""
@@ -309,9 +317,9 @@ class _MixedFont:
         key = (ch, self._emoji_target_h, self._mono)
         if key in self._emoji_raster_cache:
             return self._emoji_raster_cache[key]
-        raster, w = _emoji_raster_to_height(self._emoji_path, ch,
-                                            self._emoji_target_h or 32,
-                                            mono=self._mono)
+        raster, w = _emoji_raster_to_height(
+            self._emoji_path, ch, self._emoji_target_h or 32, mono=self._mono
+        )
         if raster is not None and not self._mono:
             # mono-emoji unchecked: derive black & white from the COLR
             # render via a luminance cut (outline stays, fill clears).
@@ -353,13 +361,22 @@ class _MixedFont:
 
     # -- Pillow font surface -----------------------------------------
     def getmask(self, *a, **k):
-        raise NotImplementedError(
-            "use _draw_text_mixed() with _MixedFont instead of draw.text()")
+        raise NotImplementedError("use _draw_text_mixed() with _MixedFont instead of draw.text()")
 
     getmask2 = getmask
 
-    def getbbox(self, text, mode="", direction=None, features=None,
-                language=None, stroke_width=0, anchor=None, *args, **kwargs):
+    def getbbox(
+        self,
+        text,
+        mode="",
+        direction=None,
+        features=None,
+        language=None,
+        stroke_width=0,
+        anchor=None,
+        *args,
+        **kwargs,
+    ):
         """Ink bounding box of the text with emoji as advance slots.
 
         Measurement ALWAYS uses the primary TrueType font: emoji chars are
@@ -382,27 +399,41 @@ class _MixedFont:
         # --ligatures: the glyphs are drawn with the PUA font whose advance
         # can be wider than the plain font's (Arial 'ciao'+'unic': 218 vs
         # 159): size the box on the shaped advance or the tail is clipped.
-        shaped_x2 = self._shaped_length(self.font, clean) \
-            if getattr(self, "_ligatures", False) and "\n" not in clean \
+        shaped_x2 = (
+            self._shaped_length(self.font, clean)
+            if getattr(self, "_ligatures", False) and "\n" not in clean
             else None
+        )
         if self._uniform and clean.strip():
             # Uniform mode: the HEIGHT comes from the standard sample
             # ("Ag") so all texts with the same line count fit the same;
             # the WIDTH stays the real text width so long phrases are not
             # cut off.
             h_bbox = self.font.getbbox(
-                _UNIFORM_SAMPLE, mode=mode, direction=direction,
-                features=features, language=language,
-                stroke_width=stroke_width, anchor=anchor,
-                *args, **kwargs)
+                _UNIFORM_SAMPLE,
+                mode=mode,
+                direction=direction,
+                features=features,
+                language=language,
+                stroke_width=stroke_width,
+                anchor=anchor,
+                *args,
+                **kwargs,
+            )
             w_bbox = self.font.getbbox(
-                clean, mode=mode, direction=direction, features=features,
-                language=language, stroke_width=stroke_width, anchor=anchor,
-                *args, **kwargs)
+                clean,
+                mode=mode,
+                direction=direction,
+                features=features,
+                language=language,
+                stroke_width=stroke_width,
+                anchor=anchor,
+                *args,
+                **kwargs,
+            )
             if shaped_x2 is not None:
                 w_bbox = (w_bbox[0], w_bbox[1], int(round(shaped_x2)), w_bbox[3])
-            if has_emoji_target and any(self.is_emoji(ch) for ch in text) \
-                    and not self._emoji_band:
+            if has_emoji_target and any(self.is_emoji(ch) for ch in text) and not self._emoji_band:
                 # Inline (line mode) with emoji: the width must also
                 # include the emoji rasters, exactly like in the regular
                 # mode below, or the label would be too short and cut the
@@ -412,17 +443,22 @@ class _MixedFont:
                     return (0, 0, w, h_bbox[3] - h_bbox[1])
                 return (w_bbox[0], h_bbox[1], w_bbox[0] + w, h_bbox[3])
             if anchor == "lt":
-                return (w_bbox[0], h_bbox[1], w_bbox[2],
-                        h_bbox[3] - h_bbox[1])
+                return (w_bbox[0], h_bbox[1], w_bbox[2], h_bbox[3] - h_bbox[1])
             return (w_bbox[0], h_bbox[1], w_bbox[2], h_bbox[3])
         b = self.font.getbbox(
-            clean, mode=mode, direction=direction, features=features,
-            language=language, stroke_width=stroke_width, anchor=anchor,
-            *args, **kwargs)
+            clean,
+            mode=mode,
+            direction=direction,
+            features=features,
+            language=language,
+            stroke_width=stroke_width,
+            anchor=anchor,
+            *args,
+            **kwargs,
+        )
         if shaped_x2 is not None:
             b = (b[0], b[1], int(round(shaped_x2)), b[3])
-        if has_emoji_target and any(self.is_emoji(ch) for ch in text) \
-                and not self._emoji_band:
+        if has_emoji_target and any(self.is_emoji(ch) for ch in text) and not self._emoji_band:
             # Inline (line mode) with emoji: width = pen advance of the
             # whole string (raster slots), height stays the text height.
             w = int(round(self.getlength(text)))
@@ -468,14 +504,14 @@ class _MixedFont:
         return self.font.getmetrics()
 
 
-def _load_text_font(primary, size, emoji_mode="line", uniform=False,
-                    mono=True, ligatures=None):
+def _load_text_font(primary, size, emoji_mode="line", uniform=False, mono=True, ligatures=None):
     """Create a font for drawing text, with emoji raster overlay."""
     if ligatures is None:
         ligatures = _LIGATURES_GLOBAL
     epath, _cmap = _find_emoji_font()
-    return _MixedFont(primary, size, epath, emoji_mode=emoji_mode,
-                      uniform=uniform, mono=mono, ligatures=ligatures)
+    return _MixedFont(
+        primary, size, epath, emoji_mode=emoji_mode, uniform=uniform, mono=mono, ligatures=ligatures
+    )
 
 
 # Global GSUB feature tag (e.g. "calt") set by build_label(); avoids
@@ -516,6 +552,7 @@ def _lig_features(font_path):
     """List the GSUB feature tags of the font (sorted), or [] on error."""
     try:
         from fontTools.ttLib import TTFont
+
         tt = _LIG_TT_CACHE.get(font_path)
         if tt is None:
             tt = TTFont(font_path, lazy=True)
@@ -535,6 +572,7 @@ def _lig_ext_cmap(font_path):
     """Extended cmap {cp -> glyph_name} for the PUA font (cached)."""
     try:
         from fontTools.ttLib import TTFont
+
         tt = _LIG_TT_CACHE.get(font_path)
         if tt is None:
             tt = TTFont(font_path, lazy=False)
@@ -563,12 +601,15 @@ def _lig_pua_font(font_path, size):
     entry = None
     try:
         from fontTools.ttLib.tables._c_m_a_p import CmapSubtable
+
         ext = _lig_ext_cmap(font_path)
         if not ext:
             entry = None
         else:
             import io
+
             from fontTools.ttLib import TTFont
+
             tt = _LIG_TT_CACHE.get(font_path)
             if tt is None:
                 tt = TTFont(font_path, lazy=False)
@@ -591,6 +632,7 @@ def _lig_shape(font_path, text, feature):
     """Shape `text` with the feature ON -> [(gid, cluster)] or None."""
     try:
         import uharfbuzz as hb
+
         blob = hb.Blob.from_file_path(font_path)
         face = hb.Face(blob)
         font = hb.Font(face)
@@ -635,6 +677,7 @@ def _lig_substitute(text, font_path, feature):
             name_to_pua.setdefault(nm, chr(cp))
         try:
             import uharfbuzz as hb
+
             blob = hb.Blob.from_file_path(font_path)
             face = hb.Face(blob)
             hbfont = hb.Font(face)
@@ -655,7 +698,7 @@ def _lig_substitute(text, font_path, feature):
             # substituted glyph: find how many chars it covers (up to the
             # next cluster), map its name to the PUA and replace the range.
             nxt = len(result)
-            for _g2, c2 in shaped[idx + 1:]:
+            for _g2, c2 in shaped[idx + 1 :]:
                 if c2 != cl:
                     nxt = c2
                     break
@@ -664,6 +707,7 @@ def _lig_substitute(text, font_path, feature):
                 tt = _LIG_TT_CACHE.get(font_path)
                 if tt is None:
                     from fontTools.ttLib import TTFont
+
                     tt = TTFont(font_path, lazy=False)
                     _LIG_TT_CACHE[font_path] = tt
                 order = tt.getGlyphOrder()
@@ -679,8 +723,9 @@ def _lig_substitute(text, font_path, feature):
     return result
 
 
-def _draw_text_mixed(draw, xy, text, font, fill=None, anchor=None,
-                     stroke_width=0, stroke_fill=None):
+def _draw_text_mixed(
+    draw, xy, text, font, fill=None, anchor=None, stroke_width=0, stroke_fill=None
+):
     """Draw `text`: normal glyphs with the primary font, emoji as rasters.
 
     Glyph chunks are drawn on a single shared baseline (anchor "ls"), the
@@ -702,8 +747,15 @@ def _draw_text_mixed(draw, xy, text, font, fill=None, anchor=None,
     if not text:
         return
     if not isinstance(font, _MixedFont):
-        draw.text(xy, text, font=font, fill=fill, anchor=anchor,
-                  stroke_width=stroke_width, stroke_fill=stroke_fill)
+        draw.text(
+            xy,
+            text,
+            font=font,
+            fill=fill,
+            anchor=anchor,
+            stroke_width=stroke_width,
+            stroke_fill=stroke_fill,
+        )
         return
     x0, y0 = xy
     clean = font._clean_text(text)
@@ -714,10 +766,15 @@ def _draw_text_mixed(draw, xy, text, font, fill=None, anchor=None,
         # past the strip). Real newlines (API misuse) are drawn without an
         # anchor: Pillow's multiline_text rejects anchors.
         if clean.strip():
-            draw.text((x0, y0), clean, font=font.font, fill=fill,
-                      anchor=(anchor if "\n" not in clean else None),
-                      stroke_width=stroke_width,
-                      stroke_fill=stroke_fill)
+            draw.text(
+                (x0, y0),
+                clean,
+                font=font.font,
+                fill=fill,
+                anchor=(anchor if "\n" not in clean else None),
+                stroke_width=stroke_width,
+                stroke_fill=stroke_fill,
+            )
         return
     # Baseline selection:
     # - default: from the CLEAN TEXT bounding box (anchor "ls"), i.e.
@@ -731,8 +788,11 @@ def _draw_text_mixed(draw, xy, text, font, fill=None, anchor=None,
     if font._uniform:
         asc = -font.font.getbbox(_UNIFORM_SAMPLE, anchor="ls")[1]
     else:
-        asc = -font.font.getbbox(clean, anchor="ls")[1] \
-            if clean.strip() else font.font.getmetrics()[0]
+        asc = (
+            -font.font.getbbox(clean, anchor="ls")[1]
+            if clean.strip()
+            else font.font.getmetrics()[0]
+        )
     baseline = y0 + asc
     for font_used, chunk in font._split(text):
         if font_used is None:
@@ -749,38 +809,55 @@ def _draw_text_mixed(draw, xy, text, font, fill=None, anchor=None,
                     # OpenType feature shaping (--ligatures FEATURE): only
                     # the substituted (ligature) glyphs change, all normal
                     # chars stay drawn by the normal Pillow path.
-                    ssub = _lig_substitute(
-                        chunk, font._path, font._ligatures)
+                    ssub = _lig_substitute(chunk, font._path, font._ligatures)
                     if ssub and ssub != chunk:
                         pua_font = _lig_pua_font(font._path, font.size)
                         if pua_font is not None:
-                            draw.text((x0, baseline), ssub,
-                                      font=pua_font, fill=fill,
-                                      anchor="ls",
-                                      stroke_width=stroke_width,
-                                      stroke_fill=stroke_fill)
+                            draw.text(
+                                (x0, baseline),
+                                ssub,
+                                font=pua_font,
+                                fill=fill,
+                                anchor="ls",
+                                stroke_width=stroke_width,
+                                stroke_fill=stroke_fill,
+                            )
                             x0 += pua_font.getlength(ssub)
                             continue
-                    draw.text((x0, baseline), chunk, font=font_used,
-                              fill=fill, anchor="ls",
-                              stroke_width=stroke_width,
-                              stroke_fill=stroke_fill)
+                    draw.text(
+                        (x0, baseline),
+                        chunk,
+                        font=font_used,
+                        fill=fill,
+                        anchor="ls",
+                        stroke_width=stroke_width,
+                        stroke_fill=stroke_fill,
+                    )
                     x0 += font_used.getlength(chunk)
                 else:
-                    draw.text((x0, baseline), chunk, font=font_used,
-                              fill=fill, anchor="ls",
-                              stroke_width=stroke_width,
-                              stroke_fill=stroke_fill)
+                    draw.text(
+                        (x0, baseline),
+                        chunk,
+                        font=font_used,
+                        fill=fill,
+                        anchor="ls",
+                        stroke_width=stroke_width,
+                        stroke_fill=stroke_fill,
+                    )
                     x0 += font_used.getlength(chunk)
             else:
                 # Safety: real newlines in a chunk (API misuse): draw each
                 # line on its own baseline without an anchor.
                 for ln in chunk.split("\n"):
                     if ln:
-                        draw.text((x0, baseline), ln, font=font_used,
-                                  fill=fill,
-                                  stroke_width=stroke_width,
-                                  stroke_fill=stroke_fill)
+                        draw.text(
+                            (x0, baseline),
+                            ln,
+                            font=font_used,
+                            fill=fill,
+                            stroke_width=stroke_width,
+                            stroke_fill=stroke_fill,
+                        )
                         x0 += font_used.getlength(ln)
                     baseline += font_used.getlength("A")
 
@@ -792,310 +869,313 @@ def set_args():
     """
     p = argparse.ArgumentParser()
     p.add_argument(
-        'comport',
-        metavar='COM_PORT',
-        nargs='?',
-        help='Printer COM port, or "bt:NAME" for native Bluetooth.'
+        "comport",
+        metavar="COM_PORT",
+        nargs="?",
+        help='Printer COM port, or "bt:NAME" for native Bluetooth.',
     )
     p.add_argument(
-        '--list-bt',
-        help='List paired Bluetooth devices supporting RFCOMM/SPP and exit.',
-        action='store_true'
+        "--list-bt",
+        help="List paired Bluetooth devices supporting RFCOMM/SPP and exit.",
+        action="store_true",
     )
     p.add_argument(
-        '--gui',
-        help='Launch the Tkinter GUI instead of printing from the command '
-             'line. COM_PORT/FONT_NAME/TEXT_TO_PRINT are ignored. The GUI '
-             'has its own status panel, so console progress messages are '
-             'suppressed.',
-        action='store_true',
+        "--gui",
+        help="Launch the Tkinter GUI instead of printing from the command "
+        "line. COM_PORT/FONT_NAME/TEXT_TO_PRINT are ignored. The GUI "
+        "has its own status panel, so console progress messages are "
+        "suppressed.",
+        action="store_true",
         default=False,
     )
-    p.add_argument(  
-        '--fixed-width',  
-        type=int,  
-        default=None,  
-        metavar='MILLIMETERS',  
-        help='Pad label to exact width in mm (adds whitespace if text is shorter).'  
-    )
-    p.add_argument(  
-        '--fixed-font-size',  
-        type=int,  
-        metavar='SIZE',  
-        help='Use fixed font size (disables auto-sizing to fit printable area)'  
+    p.add_argument(
+        "--fixed-width",
+        type=int,
+        default=None,
+        metavar="MILLIMETERS",
+        help="Pad label to exact width in mm (adds whitespace if text is shorter).",
     )
     p.add_argument(
-        'fontname',
-        metavar='FONT_NAME',
-        nargs='?', default='arial.ttf',
-        help='Pathname of the used TrueType or OpenType font.'
+        "--fixed-font-size",
+        type=int,
+        metavar="SIZE",
+        help="Use fixed font size (disables auto-sizing to fit printable area)",
     )
     p.add_argument(
-        'text_to_print',
-        metavar='TEXT_TO_PRINT',
-        nargs='*',
-        help='Text to be printed. UTF8 characters are accepted. Use \\n for line breaks.'
+        "fontname",
+        metavar="FONT_NAME",
+        nargs="?",
+        default="arial.ttf",
+        help="Pathname of the used TrueType or OpenType font.",
     )
     p.add_argument(
-        '-u', '--unicode',
-        help='Use Unicode escape sequences in TEXT_TO_PRINT.',
-        action='store_true'
+        "text_to_print",
+        metavar="TEXT_TO_PRINT",
+        nargs="*",
+        help="Text to be printed. UTF8 characters are accepted. Use \\n for line breaks.",
     )
     p.add_argument(
-        '-l', '--lines',
-        help='Add horizontal lines for drawing area (dotted red) and tape (cyan).',
-        action='store_true'
+        "-u",
+        "--unicode",
+        help="Use Unicode escape sequences in TEXT_TO_PRINT.",
+        action="store_true",
     )
     p.add_argument(
-        '-s', '--show',
-        help='Show the created image. (If also using -n, terminate.)',
-        action='store_true'
+        "-l",
+        "--lines",
+        help="Add horizontal lines for drawing area (dotted red) and tape (cyan).",
+        action="store_true",
     )
     p.add_argument(
-        '-c', '--show-conv',
-        help='Show the converted image. (If also using -n, terminate.)',
-        action='store_true'
+        "-s",
+        "--show",
+        help="Show the created image. (If also using -n, terminate.)",
+        action="store_true",
     )
     p.add_argument(
-        '-i', '--image',
-        metavar='FILE_NAME',
-        help='Image file to print. If this option is used (legacy mode), TEXT_TO_PRINT and FONT_NAME are ignored.'
+        "-c",
+        "--show-conv",
+        help="Show the converted image. (If also using -n, terminate.)",
+        action="store_true",
     )
     p.add_argument(
-        '-M', '--merge',
-        metavar='FILE_NAME',
-        action='append',
-        help='Merge the image file before the text. Can be used multiple times.'
+        "-i",
+        "--image",
+        metavar="FILE_NAME",
+        help="Image file to print. If this option is used (legacy mode), TEXT_TO_PRINT and FONT_NAME are ignored.",
     )
     p.add_argument(
-        '-R', '--resize',
+        "-M",
+        "--merge",
+        metavar="FILE_NAME",
+        action="append",
+        help="Merge the image file before the text. Can be used multiple times.",
+    )
+    p.add_argument(
+        "-R",
+        "--resize",
         type=float,
-        metavar='FLOAT',
-        help='With image merge, additionaly resize it (floating point number).',
-        default = 1.0
+        metavar="FLOAT",
+        help="With image merge, additionaly resize it (floating point number).",
+        default=1.0,
     )
     p.add_argument(
-        '-X', '--x-merge',
+        "-X",
+        "--x-merge",
         type=int,
-        metavar='DOTS',
-        help='With image merge, shift right the image of X dots.',
-        default = 0
-    )
-    p.add_argument(
-        '-Y', '--y-merge',
-        metavar='DOTS',
-        type=int,
-        help='With image merge, shift down the image of Y dots.',
-        default = 12
-    )
-    p.add_argument(
-        '--merge-gap',
-        metavar='DOTS',
-        type=int,
-        help='Horizontal gap (in dots) between a merged image and the text.',
-        default = 0
-    )
-    p.add_argument(
-        '-S', '--save',
-        metavar='FILE_NAME',
-        help='Save the produced image to a PNG file.'
-    )
-    p.add_argument(
-        '--save-conv',
-        metavar='FILE_NAME',
-        help='Save the converted (rasterized) image sent to the printer'
-             ' to a PNG file.',
-    )
-    p.add_argument(
-        '-n', '--no-print',
-        help='Only configure the printer and send the image but do not send print command.',
-        action='store_true'
-    )
-    p.add_argument(
-        '-F', '--no-feed',
-        help='Disable feeding at the end of the print (chaining).',
-        action='store_true'
-    )
-    p.add_argument(
-        '-a', '--auto-cut',
-        help='Enable auto-cutting (or print label boundary on e.g. PT-P300BT).',
-        action='store_true'
-    )
-    p.add_argument(
-        '-m', '--end-margin',
-        metavar='DOTS',
-        help='End margin (in dots).',
+        metavar="DOTS",
+        help="With image merge, shift right the image of X dots.",
         default=0,
-        type=int
     )
     p.add_argument(
-        '-r', '--raw',
-        help='Send the image to printer as-is without any pre-processing.',
-        action='store_true'
+        "-Y",
+        "--y-merge",
+        metavar="DOTS",
+        type=int,
+        help="With image merge, shift down the image of Y dots.",
+        default=12,
     )
     p.add_argument(
-        '-C', '--nocomp',
-        help='Disable compression.',
-        action='store_true'
+        "--merge-gap",
+        metavar="DOTS",
+        type=int,
+        help="Horizontal gap (in dots) between a merged image and the text.",
+        default=0,
     )
     p.add_argument(
-        '--fill-color',
+        "-S", "--save", metavar="FILE_NAME", help="Save the produced image to a PNG file."
+    )
+    p.add_argument(
+        "--save-conv",
+        metavar="FILE_NAME",
+        help="Save the converted (rasterized) image sent to the printer to a PNG file.",
+    )
+    p.add_argument(
+        "-n",
+        "--no-print",
+        help="Only configure the printer and send the image but do not send print command.",
+        action="store_true",
+    )
+    p.add_argument(
+        "-F",
+        "--no-feed",
+        help="Disable feeding at the end of the print (chaining).",
+        action="store_true",
+    )
+    p.add_argument(
+        "-a",
+        "--auto-cut",
+        help="Enable auto-cutting (or print label boundary on e.g. PT-P300BT).",
+        action="store_true",
+    )
+    p.add_argument(
+        "-m", "--end-margin", metavar="DOTS", help="End margin (in dots).", default=0, type=int
+    )
+    p.add_argument(
+        "-r",
+        "--raw",
+        help="Send the image to printer as-is without any pre-processing.",
+        action="store_true",
+    )
+    p.add_argument("-C", "--nocomp", help="Disable compression.", action="store_true")
+    p.add_argument(
+        "--fill-color",
         dest="fill",
         help='Fill color for the text (e.g., "white"; default = "black").',
         default="black",
     )
     p.add_argument(
-        '--stroke-fill',
+        "--stroke-fill",
         help='Stroke Fill color for the text (e.g., "black"; default = None).',
         default=None,
     )
     p.add_argument(
-        '--stroke-width',
-        help='Width of the text stroke (e.g., 1 or 2).',
+        "--stroke-width",
+        help="Width of the text stroke (e.g., 1 or 2).",
         type=int,
         default=0,
     )
     p.add_argument(
-        '--text-size',
-        help='Horizontally stretch the text to fit the specified size.',
-        metavar='MILLIMETERS',
+        "--text-size",
+        help="Horizontally stretch the text to fit the specified size.",
+        metavar="MILLIMETERS",
         type=int,
         default=None,
     )
     p.add_argument(
-        '--font-scale',
+        "--font-scale",
         type=float,
         default=None,
-        metavar='NUMBER',
-        help='Scale font size by specified percentage (default: 100%%)'
+        metavar="NUMBER",
+        help="Scale font size by specified percentage (default: 100%%)",
     )
     p.add_argument(
-        '--h-padding',
+        "--h-padding",
         type=int,
         default=5,
-        metavar='DOTS',
-        help='Define custom left and right horizontal padding in pixels'
-        ' (default: 5 pixels left and 5 pixels right)'
+        metavar="DOTS",
+        help="Define custom left and right horizontal padding in pixels"
+        " (default: 5 pixels left and 5 pixels right)",
     )
     p.add_argument(
-        '--v-shift',
+        "--v-shift",
         type=int,
         default=0,
-        metavar='DOTS',
-        help='Define relative vertical traslation in pixels'
-        ' (default is to vertically center the font)'
+        metavar="DOTS",
+        help="Define relative vertical traslation in pixels"
+        " (default is to vertically center the font)",
     )
     p.add_argument(
-        '-p',
-        '--line-spacing',
+        "-p",
+        "--line-spacing",
         type=float,
         default=1.2,
-        metavar='MULTIPLIER',
-        help='Line spacing multiplier for multi-line text (default: 1.2)'
+        metavar="MULTIPLIER",
+        help="Line spacing multiplier for multi-line text (default: 1.2)",
     )
     p.add_argument(
-        '-H',
-        '--center-text',
-        help='Horizontally center text inside the label image.',
-        action='store_true'
+        "-H",
+        "--center-text",
+        help="Horizontally center text inside the label image.",
+        action="store_true",
     )
     p.add_argument(
-        '--tape-width',
+        "--tape-width",
         type=float,
-        metavar='MILLIMETERS',
+        metavar="MILLIMETERS",
         default=12.0,
-        help='Printable tape width in mm (default: 12). The PT-P300BT prints '
-             'on 12 mm tape with a fixed raster; values below 12 (e.g. 6, 9) '
-             'shrink the printable band the text is auto-sized to, keeping the '
-             '128 px raster compatible with the device.'
+        help="Printable tape width in mm (default: 12). The PT-P300BT prints "
+        "on 12 mm tape with a fixed raster; values below 12 (e.g. 6, 9) "
+        "shrink the printable band the text is auto-sized to, keeping the "
+        "128 px raster compatible with the device.",
     )
     p.add_argument(
-        '--emoji-print-area',
-        help='Size emoji to fill the printable area (64 px, like merged'
-             ' images) instead of their line height.',
-        action='store_true',
+        "--emoji-print-area",
+        help="Size emoji to fill the printable area (64 px, like merged"
+        " images) instead of their line height.",
+        action="store_true",
         default=False,
     )
     p.add_argument(
-        '--uniform-font',
-        help='Use the same font size regardless of the specific text: the'
-             ' auto-fit measures a standard sample ("Ag", covering ascents'
-             ' and descents) instead of the actual letters. All texts with'
-             ' the same number of lines then get the same size, e.g. "cao"'
-             ' and "ciao".',
-        action='store_true',
+        "--uniform-font",
+        help="Use the same font size regardless of the specific text: the"
+        ' auto-fit measures a standard sample ("Ag", covering ascents'
+        " and descents) instead of the actual letters. All texts with"
+        ' the same number of lines then get the same size, e.g. "cao"'
+        ' and "ciao".',
+        action="store_true",
         default=False,
     )
     p.add_argument(
-        '--ligatures',
-        help='Enable a GSUB feature of the selected font (requires '
-             'uharfbuzz). The feature name is the OpenType tag, e.g. '
-             '"calt" (contextual alternates, arrows in Fira Code), "liga" '
-             '(standard ligatures) or "dlig" (discretionary ligatures). '
-             'Repeat the option to enable several features. Text is '
-             'shaped with HarfBuzz but only the substituted (ligature) '
-             'glyphs are drawn differently; all normal characters stay '
-             'exactly as they are. Use --list-ligatures to see the '
-             'features the font actually exposes.',
-        metavar='FEATURE',
-        action='append',
+        "--ligatures",
+        help="Enable a GSUB feature of the selected font (requires "
+        "uharfbuzz). The feature name is the OpenType tag, e.g. "
+        '"calt" (contextual alternates, arrows in Fira Code), "liga" '
+        '(standard ligatures) or "dlig" (discretionary ligatures). '
+        "Repeat the option to enable several features. Text is "
+        "shaped with HarfBuzz but only the substituted (ligature) "
+        "glyphs are drawn differently; all normal characters stay "
+        "exactly as they are. Use --list-ligatures to see the "
+        "features the font actually exposes.",
+        metavar="FEATURE",
+        action="append",
         default=None,
     )
     p.add_argument(
-        '--list-ligatures',
-        help='List the OpenType GSUB features of the selected font and '
-             'exit. Use a tag from the list with --ligatures.',
-        metavar='FONT_NAME',
-        nargs='?',
-        const='arial.ttf',
+        "--list-ligatures",
+        help="List the OpenType GSUB features of the selected font and "
+        "exit. Use a tag from the list with --ligatures.",
+        metavar="FONT_NAME",
+        nargs="?",
+        const="arial.ttf",
         default=None,
     )
     p.add_argument(
-        '--luma-lo',
-        help='Monochrome emoji cut: luminance below this value becomes '
-             'solid black ink (default: 140).',
+        "--luma-lo",
+        help="Monochrome emoji cut: luminance below this value becomes "
+        "solid black ink (default: 140).",
         type=float,
-        metavar='NUMBER',
+        metavar="NUMBER",
         default=140.0,
     )
     p.add_argument(
-        '--luma-hi',
-        help='Monochrome emoji cut: luminance above this value becomes '
-             'transparent (default: 175). Values between LO and HI fade '
-             'with antialiasing.',
+        "--luma-hi",
+        help="Monochrome emoji cut: luminance above this value becomes "
+        "transparent (default: 175). Values between LO and HI fade "
+        "with antialiasing.",
         type=float,
-        metavar='NUMBER',
+        metavar="NUMBER",
         default=175.0,
     )
     p.add_argument(
-        '--mono-emoji',
-        help='Render emoji as black ink (--mono-emoji, default) instead of '
-             'in their embedded colors (--no-mono-emoji). The thermal '
-             'print is 1-bit, so mono matches what actually prints.',
+        "--mono-emoji",
+        help="Render emoji as black ink (--mono-emoji, default) instead of "
+        "in their embedded colors (--no-mono-emoji). The thermal "
+        "print is 1-bit, so mono matches what actually prints.",
         action=argparse.BooleanOptionalAction,
         default=True,
     )
     p.add_argument(
-        '--tab-width',
-        help='Number of spaces a TAB character expands to (default: 8).',
+        "--tab-width",
+        help="Number of spaces a TAB character expands to (default: 8).",
         type=int,
-        metavar='SPACES',
+        metavar="SPACES",
         default=8,
     )
     p.add_argument(
-        '--white-level',
+        "--white-level",
         help='Minimum pixel value to consider it "white" when'
-        ' cropping the image. Set it to a value close to 255. (Default: 240)',
-        metavar='NUMBER',
+        " cropping the image. Set it to a value close to 255. (Default: 240)",
+        metavar="NUMBER",
         type=int,
         default=240,
     )
     p.add_argument(
-        '--threshold',
-        help='Custom thresholding when converting the image to binary, to'
-        ' manually decide which pixel values become black or white'
-        ' (Default: 75)',
-        metavar='NUMBER',
+        "--threshold",
+        help="Custom thresholding when converting the image to binary, to"
+        " manually decide which pixel values become black or white"
+        " (Default: 75)",
+        metavar="NUMBER",
         type=int,
         default=75,
     )
@@ -1104,61 +1184,62 @@ def set_args():
 
 def process_image(image_path, resize, white_level, target_height):
     # Determines if the image is a PDF and converts it to PNG if necessary
-    if image_path.lower().endswith('.pdf'):
-        image_path = convert_pdf(image_path)  # Sends image_path to convert_pdf() and returns the output_filename
+    if image_path.lower().endswith(".pdf"):
+        image_path = convert_pdf(
+            image_path
+        )  # Sends image_path to convert_pdf() and returns the output_filename
 
     # Open the image
     img = Image.open(image_path)
-    
+
     # Convert the image to RGBA to ensure it has an alpha channel
     img = img.convert("RGBA")
     pixels = img.load()
 
     # Create a new white background image with the same size as the original
     white_background = Image.new("RGBA", img.size, (255, 255, 255, 255))
-    
+
     # Paste the original image onto the white background
     white_background.paste(img, (0, 0), img)
-    
+
     # Now 'white_background' has no transparency (transparency is replaced by white)
     img = white_background
-    
+
     # Convert the image to grayscale
     img = img.convert("L")  # "L" mode is for grayscale images
-    
+
     # Get image dimensions
     width, height = img.size
 
     # Initialize the bounding box coordinates
     left, top, right, bottom = width, height, 0, 0
-    
+
     # Iterate over each pixel to find the bounding box of non-white pixels
     for y in range(height):
         for x in range(width):
             pixel = img.getpixel((x, y))
-            
+
             # White pixels in grayscale have a value close to 255
             if pixel < white_level:  # Consider pixels that are not white
                 left = min(left, x)
                 right = max(right, x)
                 top = min(top, y)
                 bottom = max(bottom, y)
-    
+
     # Crop the image to the bounding box
     if right > left and bottom > top:
         cropped_img = img.crop((left, top, right + 1, bottom + 1))
-        
+
         # Get the size of the cropped image
         cropped_width, cropped_height = cropped_img.size
-        
+
         # Calculate the new width to maintain the aspect ratio with target height
         aspect_ratio = cropped_width / cropped_height
         new_width = int(target_height * aspect_ratio)
-        
+
         # Resize the image to target height while maintaining aspect ratio
         return cropped_img.resize(
-            (int(new_width * resize), int(target_height * resize)),
-            Image.Resampling.LANCZOS
+            (int(new_width * resize), int(target_height * resize)), Image.Resampling.LANCZOS
         )
     else:
         print("No content detected to crop.")
@@ -1167,8 +1248,10 @@ def process_image(image_path, resize, white_level, target_height):
 
 def convert_pdf(filename):
     # Converts the first page of a PDF to a PNG, returns PNG
-    output_filename = filename.replace('.pdf', '.png')
-    images = convert_from_path(filename, dpi=300, first_page=1, last_page=1) # used defaults, 300dpi may even be overkill for labels
+    output_filename = filename.replace(".pdf", ".png")
+    images = convert_from_path(
+        filename, dpi=300, first_page=1, last_page=1
+    )  # used defaults, 300dpi may even be overkill for labels
     images[0].save(output_filename, "PNG")
     return output_filename
 
@@ -1191,13 +1274,22 @@ def calculate_multiline_dimensions(lines, font, line_spacing):
     for i in range(n_lines):
         total_height += base_line_height
         if n_lines > 1 and i < n_lines - 1:
-            total_height += (line_spacing_pixels - base_line_height)
+            total_height += line_spacing_pixels - base_line_height
     return max_width, int(round(total_height)), line_heights
 
 
 def draw_multiline_text(
-    draw, text_lines, x, y, font, fill,
-    stroke_width, stroke_fill, line_spacing, center_text, image_width
+    draw,
+    text_lines,
+    x,
+    y,
+    font,
+    fill,
+    stroke_width,
+    stroke_fill,
+    line_spacing,
+    center_text,
+    image_width,
 ):
     """Draw multiple lines of text with proper spacing"""
     if not text_lines:
@@ -1227,12 +1319,16 @@ def draw_multiline_text(
             # top-aligned with the current row (in-line height or
             # printable-band height).
             _draw_text_mixed(
-                draw, (x_pos, current_y), line, font,
-                fill=fill, anchor="lt",
-                stroke_width=stroke_width, stroke_fill=stroke_fill,
+                draw,
+                (x_pos, current_y),
+                line,
+                font,
+                fill=fill,
+                anchor="lt",
+                stroke_width=stroke_width,
+                stroke_fill=stroke_fill,
             )
         current_y += line_spacing_pixels
-
 
 
 def main():
@@ -1247,23 +1343,23 @@ def main():
         font_path = args.list_ligatures
         try:
             from fontbrowser import find_font_path
+
             font_path = find_font_path(font_path)
         except Exception:
             pass
         feats = _lig_features(font_path)
         if not feats:
-            print(f'No GSUB features found in "{font_path}" '
-                  f'(or the font has no GSUB table).')
+            print(f'No GSUB features found in "{font_path}" (or the font has no GSUB table).')
         else:
             print(f'GSUB features of "{font_path}":')
             print("  " + " ".join(feats))
-            print("Use a tag with --ligatures, e.g. "
-                  f'--ligatures {feats[0] if feats else "calt"}')
+            print(f"Use a tag with --ligatures, e.g. --ligatures {feats[0] if feats else 'calt'}")
         sys.exit(0)
     if not args.comport:
         p.error("COM_PORT is required (or use --list-bt to list Bluetooth devices).")
-    if not args.comport.startswith("bt:") and \
-            args.comport not in [p.device for p in list_ports.comports()]:
+    if not args.comport.startswith("bt:") and args.comport not in [
+        p.device for p in list_ports.comports()
+    ]:
         print("Port '" + args.comport + "' does not seem a valid serial communication port.")
 
     # Build the label image (returns None for legacy image mode handling)
@@ -1301,9 +1397,7 @@ def main():
         ser = open_printer(args.comport)
     except serial.SerialException:
         p.error(
-            'Printer on Bluetooth serial port "'
-            + args.comport
-            + '" is unavailable or unreachable.'
+            'Printer on Bluetooth serial port "' + args.comport + '" is unavailable or unreachable.'
         )
     except Exception as e:
         p.error(e)
@@ -1327,9 +1421,11 @@ def main():
 # Reusable API (used by gui.py and other front-ends)
 # --------------------------------------------------------------------------
 
+
 def _list_bt_devices():
     sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "native"))
-    from btcommon import list_devices, BTError, platform_backend
+    from btcommon import BTError, list_devices, platform_backend
+
     try:
         devices = list_devices()
     except BTError as e:
@@ -1344,8 +1440,7 @@ def _list_bt_devices():
 
     def _width(s):
         # Count East-Asian wide characters as 2 columns.
-        return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1
-                   for c in s)
+        return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in s)
 
     def _pad(s, w):
         return s + " " * max(0, w - _width(s))
@@ -1354,15 +1449,15 @@ def _list_bt_devices():
     if platform_backend() == "windows":
         headers = ("DEVICE NAME", "ADDRESS", "COM PORT")
     rows = [(str(n), str(a), str(c)) for n, a, c in devices]
-    widths = [max(_width(h), max((_width(r[i]) for r in rows), default=0))
-              for i, h in enumerate(headers)]
+    widths = [
+        max(_width(h), max((_width(r[i]) for r in rows), default=0)) for i, h in enumerate(headers)
+    ]
 
     def _sep():
         print("+" + "+".join("-" * (w + 2) for w in widths) + "+")
 
     def _row(cells):
-        print("| " + " | ".join(_pad(c, w)
-                                for c, w in zip(cells, widths)) + " |")
+        print("| " + " | ".join(_pad(c, w) for c, w in zip(cells, widths)) + " |")
 
     _sep()
     _row(headers)
@@ -1384,6 +1479,7 @@ def open_printer(comport):
         # serial.Serial path on each platform.
         sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "native"))
         from btcommon import BTSerial
+
         name = comport[3:] or "PT-P300"
         return BTSerial(name=name, timeout=3)
     return serial.Serial(comport, timeout=10, write_timeout=10)
@@ -1417,7 +1513,7 @@ def build_label(args):
         args.text_to_print = []
         args.image = None
     data = None
-    if args.image is None: # not using the legacy mode
+    if args.image is None:  # not using the legacy mode
         # The PT-P300BT prints on 12 mm TZe tape with a fixed 128 px raster
         # (the hardware does not physically support narrower tape). The
         # --tape-width option lets the author plan for a smaller printable
@@ -1430,9 +1526,7 @@ def build_label(args):
         # Printable area (px) scales with the tape width: the 12 mm tape
         # offers a 9 mm printable band (64 px), so smaller tapes get a
         # proportionally smaller band (6 mm -> 32 px, 9 mm -> 48 px).
-        height_of_the_printable_area = int(
-            round(64.0 * tape_mm / 12.0)
-        )
+        height_of_the_printable_area = int(round(64.0 * tape_mm / 12.0))
         height_of_the_image = 88  # px (can be any value >= height_of_the_tape, but height_of_the_tape + 2 border lines is good)
 
         # Compute max TT font size to remain within height_of_the_printable_area
@@ -1440,42 +1534,45 @@ def build_label(args):
         font_height = 0
         font = None
         print_border = (height_of_the_image - height_of_the_printable_area) / 2
-        emoji_mode = "print" if getattr(args, "emoji_print_area", False) \
-            else "line"
+        emoji_mode = "print" if getattr(args, "emoji_print_area", False) else "line"
         uniform = bool(getattr(args, "uniform_font", False))
         mono = bool(getattr(args, "mono_emoji", True))
         text = " ".join(args.text_to_print)
         if text:
             if args.unicode:
-                text = text.encode().decode('unicode_escape')
+                text = text.encode().decode("unicode_escape")
             # Expand TAB characters to spaces (default 8, configurable),
             # so a tab never renders as a .notdef box.
             tab_w = max(1, int(getattr(args, "tab_width", 8) or 8))
             if "\t" in text:
                 text = text.expandtabs(tab_w)
-            
+
             # Check if text contains newlines to determine processing mode
-            has_newlines = '\\n' in text
+            has_newlines = "\\n" in text
 
             if has_newlines:
                 # Split text into lines for multiline processing
-                text_lines = text.replace("\\n", "\n").split('\n')
+                text_lines = text.replace("\\n", "\n").split("\n")
 
                 if args.fixed_font_size:
-                    font_size = args.fixed_font_size  
-                    font = _load_text_font(args.fontname, font_size, emoji_mode, uniform, mono)  
-                    font_width, font_height, line_heights = calculate_multiline_dimensions(  
-                        text_lines, font, args.line_spacing  
-                    )  
-                    if font_height > height_of_the_printable_area:  
-                        print(f"Warning: fixed font size {font_size} exceeds printable area ({font_height} > {height_of_the_printable_area})")  
+                    font_size = args.fixed_font_size
+                    font = _load_text_font(args.fontname, font_size, emoji_mode, uniform, mono)
+                    font_width, font_height, line_heights = calculate_multiline_dimensions(
+                        text_lines, font, args.line_spacing
+                    )
+                    if font_height > height_of_the_printable_area:
+                        print(
+                            f"Warning: fixed font size {font_size} exceeds printable area ({font_height} > {height_of_the_printable_area})"
+                        )
                 else:
                     stop = False
                     while font_height != height_of_the_printable_area:
                         if font_height > height_of_the_printable_area:
                             # Try to slightly decrease line_spacing
                             if len(text_lines) > 1:
-                                min_spacing = args.line_spacing * 0.9  # Don't go below this multiplier
+                                min_spacing = (
+                                    args.line_spacing * 0.9
+                                )  # Don't go below this multiplier
                                 spacing_step = 0.01
                                 new_spacing = args.line_spacing
                                 found_fit = False
@@ -1502,20 +1599,22 @@ def build_label(args):
                         else:
                             font_size += 1
                         try:
-                            font = _load_text_font(args.fontname, font_size, emoji_mode, uniform, mono)
+                            font = _load_text_font(
+                                args.fontname, font_size, emoji_mode, uniform, mono
+                            )
                         except Exception as e:
-                            raise _LabelError(
-                                f'Cannot load font "{args.fontname}" - {e}')
+                            raise _LabelError(f'Cannot load font "{args.fontname}" - {e}')
                         # Calculate dimensions for multiline text
                         font_width, font_height, line_heights = calculate_multiline_dimensions(
                             text_lines, font, args.line_spacing
                         )
-                        
+
                         if stop:
                             print(
                                 "The max height of this text with font "
                                 f'"{args.fontname}" is {font_height} dots'
-                                f' instead of {height_of_the_printable_area}.')
+                                f" instead of {height_of_the_printable_area}."
+                            )
                             break
 
                 # The fit measured the text only: rebuild the font with the
@@ -1536,14 +1635,13 @@ def build_label(args):
 
                 y_position = print_border
                 if args.font_scale:
-                    scaled_font_size = int(
-                        round(font_size * (args.font_scale / 100.0))
-                    )
+                    scaled_font_size = int(round(font_size * (args.font_scale / 100.0)))
                     try:
-                        font = _load_text_font(args.fontname, scaled_font_size, emoji_mode, uniform, mono)
+                        font = _load_text_font(
+                            args.fontname, scaled_font_size, emoji_mode, uniform, mono
+                        )
                     except Exception as e:
-                        raise _LabelError(
-                            f'Cannot load font "{args.fontname}" - {e}')
+                        raise _LabelError(f'Cannot load font "{args.fontname}" - {e}')
                     # Recalculate dimensions with the scaled font to get the
                     # scaled line height, then size the emoji for it.
                     font_width, font_height, line_heights = calculate_multiline_dimensions(
@@ -1558,28 +1656,23 @@ def build_label(args):
                     )
 
                     # Vertically center text
-                    y_position = print_border + (
-                        height_of_the_printable_area - font_height
-                    ) // 2
+                    y_position = print_border + (height_of_the_printable_area - font_height) // 2
 
                 # Band mode: the emoji strip (all emoji of all lines, laid out
                 # left to right) goes on the left like merged images; the
                 # text block shifts right past it.
                 emoji_strip_w = 0
                 if getattr(font, "_emoji_band", False):
-                    emoji_strip_w = max(
-                        (font.band_width(l) for l in text_lines),
-                        default=0)
+                    emoji_strip_w = max((font.band_width(l) for l in text_lines), default=0)
 
                 # Create a drawing context for the image
                 image = Image.new(
                     "RGB",
                     (
-                        emoji_strip_w + font_width + args.h_padding * 2
-                        + 1 + args.end_margin,
-                        height_of_the_image
+                        emoji_strip_w + font_width + args.h_padding * 2 + 1 + args.end_margin,
+                        height_of_the_image,
                     ),
-                    "white"
+                    "white",
                 )
                 draw = ImageDraw.Draw(image)
                 if emoji_strip_w:
@@ -1592,28 +1685,34 @@ def build_label(args):
                                 if raster is not None:
                                     draw._image.paste(
                                         raster,
-                                        (int(x_strip),
-                                         int(print_border + args.v_shift)),
-                                        raster)
+                                        (int(x_strip), int(print_border + args.v_shift)),
+                                        raster,
+                                    )
                                 x_strip += w
                 text_x = args.h_padding + emoji_strip_w
                 try:
                     # Draw multiline text
                     draw_multiline_text(
-                        draw, text_lines, text_x, y_position + args.v_shift,
-                        font, args.fill, args.stroke_width, args.stroke_fill, args.line_spacing,
-                        args.center_text, image.width
+                        draw,
+                        text_lines,
+                        text_x,
+                        y_position + args.v_shift,
+                        font,
+                        args.fill,
+                        args.stroke_width,
+                        args.stroke_fill,
+                        args.line_spacing,
+                        args.center_text,
+                        image.width,
                     )
                 except Exception as e:
                     raise _LabelError(f"Invalid parameter: {e}")
-                
+
                 if args.text_size:
                     text_size = (
-                        int(args.text_size / 0.149)
-                        - args.h_padding
-                        - args.end_margin
+                        int(args.text_size / 0.149) - args.h_padding - args.end_margin
                     )  # mm to dot
-                    
+
                     # For multiline text, use the width of the widest line for scaling
                     scale_factor = font_width / text_size
                     image = image.transform(
@@ -1627,12 +1726,14 @@ def build_label(args):
                     draw = ImageDraw.Draw(image)
             else:
                 # Single-line processing
-                if args.fixed_font_size:  
-                    font_size = args.fixed_font_size  
-                    font = _load_text_font(args.fontname, font_size, emoji_mode, uniform, mono)  
-                    font_width, font_height = font.getbbox(text, anchor="lt")[2:]  
-                    if font_height > height_of_the_printable_area:  
-                        print(f"Warning: fixed font size {font_size} exceeds printable area ({font_height} > {height_of_the_printable_area})")  
+                if args.fixed_font_size:
+                    font_size = args.fixed_font_size
+                    font = _load_text_font(args.fontname, font_size, emoji_mode, uniform, mono)
+                    font_width, font_height = font.getbbox(text, anchor="lt")[2:]
+                    if font_height > height_of_the_printable_area:
+                        print(
+                            f"Warning: fixed font size {font_size} exceeds printable area ({font_height} > {height_of_the_printable_area})"
+                        )
                 else:
                     stop = False
                     while font_height != height_of_the_printable_area:
@@ -1642,16 +1743,18 @@ def build_label(args):
                         else:
                             font_size += 1
                         try:
-                            font = _load_text_font(args.fontname, font_size, emoji_mode, uniform, mono)
+                            font = _load_text_font(
+                                args.fontname, font_size, emoji_mode, uniform, mono
+                            )
                         except Exception as e:
-                            raise _LabelError(
-                                f'Cannot load font "{args.fontname}" - {e}')
+                            raise _LabelError(f'Cannot load font "{args.fontname}" - {e}')
                         font_width, font_height = font.getbbox(text, anchor="lt")[2:]
                         if stop:
                             print(
                                 "The max height of this text with font "
                                 f'"{args.fontname}" is {font_height} dots'
-                                f' instead of {height_of_the_printable_area}.')
+                                f" instead of {height_of_the_printable_area}."
+                            )
                             break
 
                 # The fit measured the text only: rebuild the font with the
@@ -1668,14 +1771,13 @@ def build_label(args):
 
                 y_position = print_border
                 if args.font_scale:
-                    scaled_font_size = int(
-                        round(font_size * (args.font_scale / 100.0))
-                    )
+                    scaled_font_size = int(round(font_size * (args.font_scale / 100.0)))
                     try:
-                        font = _load_text_font(args.fontname, scaled_font_size, emoji_mode, uniform, mono)
+                        font = _load_text_font(
+                            args.fontname, scaled_font_size, emoji_mode, uniform, mono
+                        )
                     except Exception as e:
-                        raise _LabelError(
-                            f'Cannot load font "{args.fontname}" - {e}')
+                        raise _LabelError(f'Cannot load font "{args.fontname}" - {e}')
                     if emoji_mode == "line":
                         font.set_emoji_line_height(font_height)
                     else:
@@ -1683,9 +1785,7 @@ def build_label(args):
                     font_width, font_height = font.getbbox(text, anchor="lt")[2:]
 
                     # Vertically center text
-                    y_position = print_border + (
-                        height_of_the_printable_area - font_height
-                    ) // 2
+                    y_position = print_border + (height_of_the_printable_area - font_height) // 2
 
                 # Band mode: the emoji strip goes on the left like merged images;
                 # the text shifts right past it.
@@ -1697,11 +1797,10 @@ def build_label(args):
                 image = Image.new(
                     "RGB",
                     (
-                        emoji_strip_w + font_width + args.h_padding * 2
-                        + 1 + args.end_margin,
-                        height_of_the_image
+                        emoji_strip_w + font_width + args.h_padding * 2 + 1 + args.end_margin,
+                        height_of_the_image,
                     ),
-                    "white"
+                    "white",
                 )
                 draw = ImageDraw.Draw(image)
                 if emoji_strip_w:
@@ -1711,28 +1810,26 @@ def build_label(args):
                             raster, w = font._raster(ch)
                             if raster is not None:
                                 draw._image.paste(
-                                    raster,
-                                    (int(x_strip),
-                                     int(print_border + args.v_shift)),
-                                    raster)
+                                    raster, (int(x_strip), int(print_border + args.v_shift)), raster
+                                )
                             x_strip += w
                 text_x = args.h_padding + emoji_strip_w
                 try:
                     _draw_text_mixed(
-                        draw, (text_x, y_position + args.v_shift),
-                        text, font,
+                        draw,
+                        (text_x, y_position + args.v_shift),
+                        text,
+                        font,
                         fill=args.fill,
                         anchor="lt",
                         stroke_width=args.stroke_width,
-                        stroke_fill=args.stroke_fill
+                        stroke_fill=args.stroke_fill,
                     )
                 except Exception as e:
                     raise _LabelError(f"Invalid parameter: {e}")
                 if args.text_size:
                     text_size = (
-                        int(args.text_size / 0.149)
-                        - args.h_padding
-                        - args.end_margin
+                        int(args.text_size / 0.149) - args.h_padding - args.end_margin
                     )  # mm to dot
                     b = font.getbbox(text, anchor="lt")
                     text_width = (b[2] - b[0]) if b else 0
@@ -1748,14 +1845,10 @@ def build_label(args):
                         image = image.crop(crop_box)
                     draw = ImageDraw.Draw(image)
         else:  # null image
-            image = Image.new(
-                "RGB",
-                (0, height_of_the_image),
-                "white"
-            )
+            image = Image.new("RGB", (0, height_of_the_image), "white")
             draw = ImageDraw.Draw(image)
 
-        if not args.fixed_font_size:  
+        if not args.fixed_font_size:
             print("Font size determined:", font_size)
         if args.merge:
             for i in reversed(args.merge):
@@ -1763,15 +1856,13 @@ def build_label(args):
                     i,
                     args.resize,
                     white_level=args.white_level,
-                    target_height=height_of_the_printable_area
+                    target_height=height_of_the_printable_area,
                 )
                 if not loaded_image:
                     raise _LabelError(f'Invalid image "{i}"')
                 gap = args.merge_gap if image.width else 0
                 dst = Image.new(
-                    "RGB",
-                    (loaded_image.width + gap + image.width, height_of_the_image),
-                    "white"
+                    "RGB", (loaded_image.width + gap + image.width, height_of_the_image), "white"
                 )
                 dst.paste(loaded_image, (args.x_merge, args.y_merge))
                 dst.paste(image, (loaded_image.width + gap, 0))
@@ -1779,86 +1870,80 @@ def build_label(args):
             # Convert the image to binary
             draw = ImageDraw.Draw(image)
 
-        if args.fixed_width:  
-            target_width_dots = int(round(args.fixed_width / 0.149))  
-            current_width = image.width  
-            if current_width < target_width_dots:  
+        if args.fixed_width:
+            target_width_dots = int(round(args.fixed_width / 0.149))
+            current_width = image.width
+            if current_width < target_width_dots:
                 # Create a new white image of target width and paste the existing image
                 # centered when -H/--center-text was requested, otherwise left-aligned.
-                padded_image = Image.new("RGB", (target_width_dots, image.height), "white")  
+                padded_image = Image.new("RGB", (target_width_dots, image.height), "white")
                 if args.center_text:
                     x_offset = (target_width_dots - current_width) // 2
                 else:
-                    x_offset = 0  
-                padded_image.paste(image, (x_offset, 0))  
+                    x_offset = 0
+                padded_image.paste(image, (x_offset, 0))
                 image = padded_image
 
         if args.lines:
             # Draw ruler (in)
-            draw.text(
-                (0, 1), "in",
-                anchor="la",
-                fill="magenta"
-            )
+            draw.text((0, 1), "in", anchor="la", fill="magenta")
             x = -1
             i = 0
             while x < image.width:
                 if x > 0:
                     draw.line(  # top
-                        (
-                            int(x), print_border - (4 if i % 4 else 9),
-                            int(x), print_border - 2
-                        ),
-                        fill="magenta", width=2
+                        (int(x), print_border - (4 if i % 4 else 9), int(x), print_border - 2),
+                        fill="magenta",
+                        width=2,
                     )
                 x += 43.18
                 i += 1
             # Draw ruler (cm)
-            draw.text(
-                (0, 76), "cm",
-                anchor="la",
-                fill="magenta"
-            )
+            draw.text((0, 76), "cm", anchor="la", fill="magenta")
             x = -1
             i = 0
             while x < image.width:
                 if x > 0:
                     draw.line(
                         (
-                            int(x), height_of_the_image - print_border + 1,
-                            int(x), height_of_the_image - print_border
-                            + (5 if i % 10 else 9)
+                            int(x),
+                            height_of_the_image - print_border + 1,
+                            int(x),
+                            height_of_the_image - print_border + (5 if i % 10 else 9),
                         ),
-                        fill="magenta", width=2
+                        fill="magenta",
+                        width=2,
                     )
                 x += 68
                 i += 1
             # Draw a dotted horizontal line over the top border and below the bottom border of the printable area
             for x in range(0, image.width, 5):
                 draw.line(  # top
-                    (x, print_border - 1, x + 1, print_border - 1),
-                    fill="red", width=1
+                    (x, print_border - 1, x + 1, print_border - 1), fill="red", width=1
                 )
                 draw.line(
                     (  # bottom
-                        x, height_of_the_image - print_border,
-                        x + 1, height_of_the_image - print_border
+                        x,
+                        height_of_the_image - print_border,
+                        x + 1,
+                        height_of_the_image - print_border,
                     ),
-                    fill="red", width=1
+                    fill="red",
+                    width=1,
                 )
             # Draw a cyan line showing the tape borders
             tape_border = int((height_of_the_image - height_of_the_tape) / 2)
             if tape_border > 0:
-                draw.line(
-                    (0, tape_border - 1, image.width, tape_border - 1),
-                    fill="cyan", width=1
-                )
+                draw.line((0, tape_border - 1, image.width, tape_border - 1), fill="cyan", width=1)
                 draw.line(
                     (
-                        0, height_of_the_image - tape_border,
-                        image.width, height_of_the_image - tape_border
+                        0,
+                        height_of_the_image - tape_border,
+                        image.width,
+                        height_of_the_image - tape_border,
                     ),
-                    fill="cyan", width=1
+                    fill="cyan",
+                    width=1,
                 )
 
         if not image.tobytes():
@@ -1876,8 +1961,9 @@ def rasterize_label(image, args):
 
     # Convert to greyscale and rotate/invert/mirror the image
     rotated_image = ImageOps.invert(
-        image.convert('L', dither=Image.Dither.FLOYDSTEINBERG)
-        .rotate(-90, expand=True, resample=Image.BICUBIC)
+        image.convert("L", dither=Image.Dither.FLOYDSTEINBERG).rotate(
+            -90, expand=True, resample=Image.BICUBIC
+        )
     )
     rotated_image = ImageOps.mirror(rotated_image)
 
@@ -1885,12 +1971,12 @@ def rasterize_label(image, args):
     bin_image = rotated_image.point(lambda p: p > args.threshold and 255)
 
     # Convert to '1' mode (binary image)
-    binary_img = bin_image.convert('1')
+    binary_img = bin_image.convert("1")
 
     # Add padding to increase the height from height_of_the_image to 128
     # (similar to the last part of read_png() code in labelmaker_encode.py)
     w, h = binary_img.size
-    padded = Image.new('1', (128, h))
+    padded = Image.new("1", (128, h))
     x, y = (128 - w) // 2, 0
     nw, nh = x + w, y + h
     padded.paste(binary_img, (x, y, nw, nh))
@@ -1903,16 +1989,16 @@ def rasterize_label(image, args):
         "cm = %.1f" % (print_length / 10 / 2.54),
         "in, printed in",
         "%.1f" % (print_length / 20),
-        "sec."
+        "sec.",
     )
-    print_length += (25 + 1)  # 2.5 cm of wasted tape before, 1 mm after
+    print_length += 25 + 1  # 2.5 cm of wasted tape before, 1 mm after
     print(
         "Length of the used tape (adding header and footer):",
         "%.1f" % (print_length / 10),
         "cm = %.1f" % (print_length / 10 / 2.54),
         "in, printed in",
         "%.1f" % (print_length / 20),
-        "sec."
+        "sec.",
     )
 
     # Check max tape length
@@ -1932,12 +2018,15 @@ def gui_entry():
     """
     import contextlib
     import io as _io
+
     try:
         with contextlib.redirect_stdout(_io.StringIO()):
             from ptgui import LabelGUI
+
             LabelGUI().mainloop()
     finally:
         pass
+
 
 def _run_gui():
     """Entry point used by '--gui' (and by app launchers): parse args

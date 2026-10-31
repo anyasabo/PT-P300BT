@@ -13,9 +13,9 @@ IOBluetooth channel directly — and draining the run loop on close — avoids t
 import atexit
 import time
 
-import objc
-from Foundation import NSObject, NSDefaultRunLoopMode, NSRunLoop, NSDate
 import IOBluetooth
+import objc
+from Foundation import NSDate, NSDefaultRunLoopMode, NSObject, NSRunLoop
 
 
 class BTError(Exception):
@@ -26,8 +26,7 @@ def _spin(cond, deadline):
     """Pump the run loop (delivering IOBluetooth callbacks) until cond() or deadline."""
     rl = NSRunLoop.currentRunLoop()
     while not cond() and time.time() < deadline:
-        rl.runMode_beforeDate_(NSDefaultRunLoopMode,
-                               NSDate.dateWithTimeIntervalSinceNow_(0.05))
+        rl.runMode_beforeDate_(NSDefaultRunLoopMode, NSDate.dateWithTimeIntervalSinceNow_(0.05))
 
 
 class _Delegate(NSObject):
@@ -71,26 +70,27 @@ class BTSerial:
             return
         paired = IOBluetooth.IOBluetoothDevice.pairedDevices()
         if not paired:
-            raise BTError("No paired Bluetooth devices (Bluetooth off, or this "
-                          "terminal lacks Bluetooth permission in System Settings "
-                          "> Privacy & Security > Bluetooth).")
+            raise BTError(
+                "No paired Bluetooth devices (Bluetooth off, or this "
+                "terminal lacks Bluetooth permission in System Settings "
+                "> Privacy & Security > Bluetooth)."
+            )
         dev = next((d for d in paired if (d.name() or "").find(self.name) >= 0), None)
         if dev is None:
             names = ", ".join(d.name() or "?" for d in paired)
-            raise BTError(f'No paired device whose name contains "{self.name}". '
-                          f"Paired: {names}")
+            raise BTError(f'No paired device whose name contains "{self.name}". Paired: {names}')
         self._device = dev
 
         channel_id = self._resolve_channel(dev)
         self._d = _Delegate.alloc().init()
-        res, channel = dev.openRFCOMMChannelAsync_withChannelID_delegate_(
-            None, channel_id, self._d)
+        res, channel = dev.openRFCOMMChannelAsync_withChannelID_delegate_(None, channel_id, self._d)
         if res != 0:
             raise BTError(f"openRFCOMMChannelAsync failed: {res:#x}")
         _spin(lambda: self._d.open_done, time.time() + self._open_timeout)
         if not self._d.open_done or self._d.open_status != 0 or channel is None:
-            raise BTError(f"RFCOMM open failed (status={self._d.open_status}); "
-                          "the link did not come up.")
+            raise BTError(
+                f"RFCOMM open failed (status={self._d.open_status}); the link did not come up."
+            )
         self._channel = channel
         self.is_open = True
 
@@ -100,8 +100,7 @@ class BTSerial:
         rec = dev.getServiceRecordForUUID_(spp)
         if rec is None:
             dev.performSDPQuery_(None)
-            _spin(lambda: dev.getServiceRecordForUUID_(spp) is not None,
-                  time.time() + 6)
+            _spin(lambda: dev.getServiceRecordForUUID_(spp) is not None, time.time() + 6)
             rec = dev.getServiceRecordForUUID_(spp)
         if rec is not None:
             res, cid = rec.getRFCOMMChannelID_(None)
@@ -128,7 +127,7 @@ class BTSerial:
         data = bytes(data)
         mtu = int(self._channel.getMTU()) or 320
         for i in range(0, len(data), mtu):
-            seg = data[i:i + mtu]
+            seg = data[i : i + mtu]
             self._channel.writeSync_length_(seg, len(seg))
         return len(data)
 

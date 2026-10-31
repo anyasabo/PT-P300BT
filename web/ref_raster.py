@@ -4,15 +4,15 @@ Usage: python web/ref_raster.py <case>
 Prints JSON: {"width": W, "height": H, "bytes": "<hex>"} for the rasterized
 label (the exact bytes sent to the printer, 1 bit per pixel).
 """
+
+import contextlib
 import io
 import json
 import os
 import sys
-import contextlib
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import printlabel as pl
-
 
 CASES = {
     # name: (text, extra kwargs)
@@ -20,7 +20,7 @@ CASES = {
     "multiline": ("Line1\\nLine2", {}),
     "three_lines": ("A\\nB\\nC", {}),
     "symbols": ("→←↑↓★♥©®™", {}),
-    "emoji": ("A\U0001F60CB", {}),
+    "emoji": ("A\U0001f60cB", {}),
     "uniform": ("acca", {"uniform_font": True}),
     "fixed_size": ("Hello", {"fixed_font_size": 40}),
     "center": ("Hi", {"center_text": True}),

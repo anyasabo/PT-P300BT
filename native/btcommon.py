@@ -25,7 +25,7 @@ import subprocess
 import sys
 import time
 
-__all__ = ["BTSerial", "BTError", "platform_backend"]
+__all__ = ["BTError", "BTSerial", "platform_backend"]
 
 DEFAULT_NAME = "PT-P300"
 SPP_UUID = "00001101-0000-1000-8000-00805f9b34fb"  # Serial Port Profile
@@ -38,7 +38,10 @@ class BTError(Exception):
 def _looks_like_mac(s):
     """True if `s` is a Bluetooth MAC address (12 hex digits, any separators)."""
     import re
-    return bool(re.fullmatch(r"[0-9a-fA-F]{2}([-:]?)[0-9a-fA-F]{2}(?:(?:-|:)?[0-9a-fA-F]{2}){4}", s or ""))
+
+    return bool(
+        re.fullmatch(r"[0-9a-fA-F]{2}([-:]?)[0-9a-fA-F]{2}(?:(?:-|:)?[0-9a-fA-F]{2}){4}", s or "")
+    )
 
 
 def platform_backend():
@@ -49,15 +52,18 @@ def platform_backend():
 # macOS backend (IOBluetooth via PyObjC) — lives in native/btnative.py
 # --------------------------------------------------------------------------
 
+
 def _open_macos_by_name(name, timeout, open_timeout):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from btnative import BTSerial as _MacBTSerial
+
     return _MacBTSerial(name=name, timeout=timeout, open_timeout=open_timeout)
 
 
 # --------------------------------------------------------------------------
 # Windows backend
 # --------------------------------------------------------------------------
+
 
 def _open_windows(name, timeout, open_timeout):
     import serial  # local import so pyserial is only needed when actually used
@@ -73,19 +79,21 @@ def _open_windows(name, timeout, open_timeout):
     # NOTE: skip placeholder ports whose hwid contains the null MAC
     # (000000000000) — Windows always exposes them and they "open" fine, but
     # they are not bound to any real device (writes hang).
-    ports = [p for p in list_ports.comports()
-             if "000000000000" not in (p.hwid or "").lower()]
+    ports = [p for p in list_ports.comports() if "000000000000" not in (p.hwid or "").lower()]
     if _looks_like_mac(name):
         mac = name.replace(":", "").replace("-", "").lower()
-        candidates = [p.device for p in ports
-                      if mac in (p.hwid or "").replace(":", "").lower()]
+        candidates = [p.device for p in ports if mac in (p.hwid or "").replace(":", "").lower()]
     else:
-        named = [p.device for p in ports
-                 if "bth" in (p.hwid or "").lower() and
-                 name.lower() in (p.description or "").lower()]
-        fallback = [p.device for p in ports
-                    if "standard serial over bluetooth" in
-                    (p.description or "").lower()]
+        named = [
+            p.device
+            for p in ports
+            if "bth" in (p.hwid or "").lower() and name.lower() in (p.description or "").lower()
+        ]
+        fallback = [
+            p.device
+            for p in ports
+            if "standard serial over bluetooth" in (p.description or "").lower()
+        ]
         candidates = named or fallback
     if not candidates:
         raise BTError(
@@ -108,12 +116,13 @@ def _open_macos(name, timeout, open_timeout):
     if _looks_like_mac(name):
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import IOBluetooth
+
         mac = name.replace(":", "").replace("-", "").lower()
         for d in IOBluetooth.IOBluetoothDevice.pairedDevices():
             if (d.addressString() or "").replace(":", "").lower() == mac:
                 from btnative import BTSerial as _MacBTSerial
-                return _MacBTSerial(name=d.name(), timeout=timeout,
-                                    open_timeout=open_timeout)
+
+                return _MacBTSerial(name=d.name(), timeout=timeout, open_timeout=open_timeout)
         raise BTError(f"No paired Bluetooth device with address {name}")
     return _open_macos_by_name(name, timeout, open_timeout)
 
@@ -121,6 +130,7 @@ def _open_macos(name, timeout, open_timeout):
 # --------------------------------------------------------------------------
 # Linux backend
 # --------------------------------------------------------------------------
+
 
 def _open_linux(name, timeout, open_timeout):
     import serial
@@ -142,9 +152,9 @@ def _open_linux(name, timeout, open_timeout):
 
 def _rfcomm_socket_connect(addr, timeout, open_timeout):
     import socket
+
     try:
-        sock = socket.socket(
-            socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
+        sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM)
         sock.settimeout(open_timeout)
         sock.connect((addr, 1))  # 1 = SPP RFCOMM channel
         sock.settimeout(timeout)
@@ -204,15 +214,16 @@ def _find_bluez_device(name):
     try:
         out = subprocess.run(
             ["bluetoothctl", "devices", "Paired"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         ).stdout
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         return None
     for line in out.splitlines():
         # "Device AA:BB:CC:DD:EE:FF Some Name"
         parts = line.split(maxsplit=2)
-        if len(parts) >= 3 and parts[0] == "Device" and \
-                name.lower() in parts[2].lower():
+        if len(parts) >= 3 and parts[0] == "Device" and name.lower() in parts[2].lower():
             return parts[1]
     return None
 
@@ -220,6 +231,7 @@ def _find_bluez_device(name):
 def _rfcomm_connect(addr, open_timeout):
     """Bind /dev/rfcommN via the `rfcomm` tool; return the node path or None."""
     import serial
+
     rfcomm = None
     for cand in ("/usr/bin/rfcomm", "/bin/rfcomm"):
         if os.path.exists(cand):
@@ -230,7 +242,9 @@ def _rfcomm_connect(addr, open_timeout):
     node = "/dev/rfcomm0"
     subprocess.run(
         [rfcomm, "connect", "0", addr, "1"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=open_timeout,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=open_timeout,
     )
     # rfcomm connect normally forks to background once the link is up.
     deadline = time.time() + 5
@@ -248,10 +262,12 @@ def _rfcomm_connect(addr, open_timeout):
 # Device discovery (paired Bluetooth devices with an RFCOMM/SPP channel)
 # --------------------------------------------------------------------------
 
+
 def _list_devices_macos():
     """[(name, address, channel_id), ...] via IOBluetooth (PyObjC)."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import IOBluetooth
+
     devices = []
     for d in IOBluetooth.IOBluetoothDevice.pairedDevices():
         name = d.name() or "?"
@@ -277,6 +293,7 @@ def _list_devices_windows():
     """
     import re
     import winreg
+
     from serial.tools import list_ports
 
     def _read_name(sub):
@@ -284,7 +301,7 @@ def _list_devices_windows():
             with winreg.OpenKey(
                 winreg.HKEY_LOCAL_MACHINE,
                 r"SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters"
-                r"\Devices" + "\\" + sub
+                r"\Devices" + "\\" + sub,
             ) as k:
                 raw = winreg.QueryValueEx(k, "Name")[0]
             if isinstance(raw, (bytes, bytearray)):
@@ -299,7 +316,7 @@ def _list_devices_windows():
     try:
         with winreg.OpenKey(
             winreg.HKEY_LOCAL_MACHINE,
-            r"SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Devices"
+            r"SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Devices",
         ) as root:
             i = 0
             while True:
@@ -320,8 +337,7 @@ def _list_devices_windows():
     # carries the COM port in its FriendlyName value.
     devices = []
     try:
-        base = winreg.OpenKey(
-            winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Enum\BTHENUM")
+        base = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Enum\BTHENUM")
         with base:
             i = 0
             while True:
@@ -356,12 +372,14 @@ def _list_devices_windows():
                         mport = re.search(r"\((COM\d+)\)$", friendly)
                         if not mport:
                             continue
-                        addr = ":".join(mac[x:x + 2] for x in range(0, 12, 2))
-                        devices.append((
-                            names.get(mac, addr),
-                            addr,
-                            mport.group(1),
-                        ))
+                        addr = ":".join(mac[x : x + 2] for x in range(0, 12, 2))
+                        devices.append(
+                            (
+                                names.get(mac, addr),
+                                addr,
+                                mport.group(1),
+                            )
+                        )
     except OSError:
         pass
 
@@ -380,9 +398,11 @@ def _list_devices_linux():
     try:
         out = subprocess.run(
             ["bluetoothctl", "devices"],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         ).stdout
-    except (OSError, subprocess.TimeoutExpired):
+    except OSError, subprocess.TimeoutExpired:
         return devices
     for line in out.splitlines():
         parts = line.split(maxsplit=2)

@@ -9,6 +9,7 @@ import sys
 
 _FONT_EXTS = (".ttf", ".otf", ".ttc")
 
+
 # Directories to scan per platform, in priority order.
 def _font_dirs():
     home = os.path.expanduser("~")
@@ -17,8 +18,7 @@ def _font_dirs():
         windir = os.environ.get("WINDIR", r"C:\Windows")
         dirs += [
             os.path.join(windir, "Fonts"),
-            os.path.join(home, "AppData", "Local", "Microsoft", "Windows",
-                         "Fonts"),
+            os.path.join(home, "AppData", "Local", "Microsoft", "Windows", "Fonts"),
         ]
     elif sys.platform == "darwin":
         dirs += [
@@ -43,7 +43,7 @@ def list_system_fonts():
     `family_label` is derived from the filename (e.g. "Arial Bold") and is
     deduplicated: for each label only the first path found is kept.
     """
-    import re
+
     fonts = {}
     for d in _font_dirs():
         for root, _dirs, files in os.walk(d):
@@ -59,12 +59,12 @@ def list_system_fonts():
 
 def _humanize(filename):
     """'arialbd.ttf' -> 'Arial Bold'; '_-
-' stripped; 'uidereg.ttf' etc. skipped."""
+    ' stripped; 'uidereg.ttf' etc. skipped."""
     import re
+
     stem = os.path.splitext(filename)[0]
     # Skip obvious non-text/system fonts
-    if re.match(r"^(web|svg|icon|marlett|symbol|wingding|desktop)", stem,
-                re.IGNORECASE):
+    if re.match(r"^(web|svg|icon|marlett|symbol|wingding|desktop)", stem, re.IGNORECASE):
         return None
     # Common style suffixes (Windows naming)
     style_map = [
@@ -88,12 +88,15 @@ def _humanize(filename):
         if m and stem.isascii():
             # Only accept the suffix if what precedes it is a word boundary
             # (avoids stripping 'bi' from e.g. 'calibri').
-            if m.start() > 0 and stem[m.start() - 1].isalpha() and \
-                    len(stem) - m.start() == len(m.group(0)) and \
-                    not stem[m.start() - 1].isupper():
+            if (
+                m.start() > 0
+                and stem[m.start() - 1].isalpha()
+                and len(stem) - m.start() == len(m.group(0))
+                and not stem[m.start() - 1].isupper()
+            ):
                 continue
             suffix = label
-            stem = stem[:m.start()]
+            stem = stem[: m.start()]
             break
     # Insert spaces at camel-case boundaries and around digits
     name = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", stem)
