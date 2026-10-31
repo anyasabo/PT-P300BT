@@ -1,5 +1,5 @@
 /*
- * printer.js — faithful JavaScript port of the PT-P300BT printer protocol.
+ * printer.ts — faithful TypeScript port of the PT-P300BT printer protocol.
  *
  * Ports:
  *   - ptcbp.py            (command building / serialization)
@@ -12,13 +12,18 @@
  * directly through Web Serial (Chrome 117+), without an OS serial port.
  */
 
-'use strict';
-
 // ---------------------------------------------------------------------------
 // ptcbp.py — command schema
 // ---------------------------------------------------------------------------
 // (op bytes, mnemonic, param schema, data-length hooks)
-const CMD_SCHEMA = [
+type CommandEntry = [
+  op: Uint8Array,
+  mnemonic: string,
+  schema: string | null,
+  dataLen: string | null,
+];
+
+const CMD_SCHEMA: CommandEntry[] = [
   [new Uint8Array([0x00]), 'nop', null, null],
   [new Uint8Array([0x1b, 0x40]), 'reset', null, null],
   [new Uint8Array([0x1b, 0x69, 0x53]), 'get_status', null, null],
@@ -35,20 +40,31 @@ const CMD_SCHEMA = [
   [new Uint8Array([0x5a]), 'zerofill', null, null],
 ];
 
-const MNEMONICS = {};
+const MNEMONICS: Record<string, CommandEntry> = {};
 for (const e of CMD_SCHEMA) MNEMONICS[e[1]] = e;
 
 // struct format -> [size, writer]
-const STRUCT_FORMATS = {
+interface StructFormat {
+  size: number;
+  write(dv: DataView, off: number, v: number): void;
+}
+
+const STRUCT_FORMATS: Record<string, StructFormat> = {
   B: { size: 1, write: (dv, off, v) => dv.setUint8(off, v & 0xff) },
   H: { size: 2, write: (dv, off, v) => dv.setUint16(off, v & 0xffff, true) },
   I: { size: 4, write: (dv, off, v) => dv.setUint32(off, v >>> 0, true) },
 };
 
+function structFormat(code: string): StructFormat {
+  const f = STRUCT_FORMATS[code];
+  if (!f) throw new Error(`Unknown struct code ${code}`);
+  return f;
+}
+
 // Parse a Python struct format string (little-endian) into a list of field
 // codes, expanding repeat counts: "4BI2B" -> [B,B,B,B,I,B,B].
-function parseSchema(schema) {
-  const fields = [];
+function parseSchema(schema: string): string[] {
+  const fields: string[] = [];
   let count = '';
   for (const ch of schema) {
     if (ch >= '0' && ch <= '9') {
@@ -62,20 +78,20 @@ function parseSchema(schema) {
   return fields;
 }
 
-function schemaSize(schema) {
+function schemaSize(schema: string): number {
   let n = 0;
-  for (const ch of parseSchema(schema)) n += STRUCT_FORMATS[ch].size;
+  for (const ch of parseSchema(schema)) n += structFormat(ch).size;
   return n;
 }
 
-function packParams(schema, params) {
+function packParams(schema: string, params: number[]): Uint8Array {
   const fields = parseSchema(schema);
   const size = schemaSize(schema);
   const buf = new ArrayBuffer(size);
   const dv = new DataView(buf);
   let off = 0;
-  for (let i = 0; i < fields.length; i++) {
-    const f = STRUCT_FORMATS[fields[i]];
+  for (const [i, code] of fields.entries()) {
+    const f = structFormat(code);
     f.write(dv, off, params[i] || 0);
     off += f.size;
   }
@@ -85,8 +101,8 @@ function packParams(schema, params) {
 // ---------------------------------------------------------------------------
 // PackBits (TIFF) RLE — port of the `packbits` Python package used by ptcbp.
 // ---------------------------------------------------------------------------
-function packbitsEncode(data) {
-  const out = [];
+export function packbitsEncode(data: Uint8Array): Uint8Array {
+  const out: number[] = [];
   const n = data.length;
   let i = 0;
   while (i < n) {
@@ -98,7 +114,7 @@ function packbitsEncode(data) {
     if (runLen >= 2) {
       // Replicate run: header = 257 - runLen (as signed byte), then the byte.
       out.push((257 - runLen) & 0xff);
-      out.push(data[i]);
+      out.push(data[i] ?? 0);
       i += runLen;
     } else {
       // Literal run: gather until a run of >=3 identical bytes or 128 bytes.
@@ -118,7 +134,7 @@ function packbitsEncode(data) {
         i = start + 1;
       }
       out.push((litLen - 1) & 0xff);
-      for (let k = 0; k < litLen; k++) out.push(data[start + k]);
+      for (let k = 0; k < litLen; k++) out.push(data[start + k] ?? 0);
     }
   }
   return new Uint8Array(out);
@@ -127,7 +143,7 @@ function packbitsEncode(data) {
 // ---------------------------------------------------------------------------
 // ptcbp.py — Opcode serialization
 // ---------------------------------------------------------------------------
-function serializeControl(mnemonic, ...params) {
+export function serializeControl(mnemonic: string, ...params: number[]): Uint8Array {
   const entry = MNEMONICS[mnemonic];
   if (!entry) throw new Error(`Unknown mnemonic ${mnemonic}`);
   const op = entry[0];
@@ -137,9 +153,14 @@ function serializeControl(mnemonic, ...params) {
   return concatBytes(parts);
 }
 
-function serializeData(data, compress = 'none', useData2 = false) {
+export function serializeData(
+  data: Uint8Array,
+  compress: 'none' | 'rle' = 'none',
+  useData2 = false,
+): Uint8Array {
   const mnemonic = useData2 && compress === 'none' ? 'data2' : 'data';
   const entry = MNEMONICS[mnemonic];
+  if (!entry) throw new Error(`Unknown mnemonic ${mnemonic}`);
   const op = entry[0];
   const payload = compress === 'rle' ? packbitsEncode(data) : data;
   const lenBuf = new ArrayBuffer(2);
@@ -147,7 +168,7 @@ function serializeData(data, compress = 'none', useData2 = false) {
   return concatBytes([op, new Uint8Array(lenBuf), payload]);
 }
 
-function concatBytes(parts) {
+function concatBytes(parts: Uint8Array[]): Uint8Array {
   let total = 0;
   for (const p of parts) total += p.length;
   const out = new Uint8Array(total);
@@ -162,10 +183,10 @@ function concatBytes(parts) {
 // ---------------------------------------------------------------------------
 // Enums (ptcbp.py)
 // ---------------------------------------------------------------------------
-const CompressionType = { none: 0, rle: 2 };
-const CommandSet = { escp: 0, ptcbp: 1, ptouch_template: 3 };
-const PageMode = { auto_cut: 1 << 6, mirror: 1 << 7 };
-const PageModeAdvanced = {
+export const CompressionType = { none: 0, rle: 2 };
+export const CommandSet = { escp: 0, ptcbp: 1, ptouch_template: 3 };
+export const PageMode = { auto_cut: 1 << 6, mirror: 1 << 7 };
+export const PageModeAdvanced = {
   half_cut: 1 << 2,
   no_page_chaining: 1 << 3,
   no_cutting_on_special_tape: 1 << 4,
@@ -173,7 +194,7 @@ const PageModeAdvanced = {
   high_resolution: 1 << 6,
   preserve_buffer: 1 << 7,
 };
-const PrintParameterField = {
+export const PrintParameterField = {
   media_type: 1 << 1,
   width: 1 << 2,
   length: 1 << 3,
@@ -184,7 +205,7 @@ const PrintParameterField = {
 // ---------------------------------------------------------------------------
 // labelmaker_encode.py — encode_raster_transfer
 // ---------------------------------------------------------------------------
-function* encodeRasterTransfer(data, nocomp = false) {
+export function* encodeRasterTransfer(data: Uint8Array, nocomp = false): Generator<Uint8Array> {
   const chunkSize = 16;
   const zeroLine = new Uint8Array(chunkSize);
   for (let i = 0; i < data.length; i += chunkSize) {
@@ -197,7 +218,7 @@ function* encodeRasterTransfer(data, nocomp = false) {
   }
 }
 
-function bytesEqual(a, b) {
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
@@ -206,71 +227,134 @@ function bytesEqual(a, b) {
 // ---------------------------------------------------------------------------
 // ptstatus.py — status register parsing (32 bytes, big-endian)
 // ---------------------------------------------------------------------------
-const POWER = { 0: 'Battery full', 1: 'Battery half', 2: 'Battery low', 3: 'Battery critical', 4: 'AC' };
-const MODELS = {
-  0x38: 'QL-800', 0x39: 'QL-810W', 0x41: 'QL-820NWB', 0x66: 'PT-E550W',
-  0x68: 'PT-P750W', 0x6f: 'PT-P900W', 0x70: 'PT-P950NW', 0x72: 'PT-P300BT',
-};
-const ERR_FLAGS = {
-  0: 'Replace media', 1: 'Expansion buffer full', 2: 'Communication error',
-  3: 'Communication buffer full', 4: 'Cover opened',
-  5: 'Overheat/Cancelled on printer side', 6: 'Feed error',
-  7: 'General system error', 8: 'Media not loaded',
-  9: 'End of media (Page too long)', 10: 'Cutter jammed', 11: 'Low battery',
-  12: 'Printer in use', 13: 'Printer not powered', 14: 'Overvoltage', 15: 'Fan error',
-};
-const TAPE_TYPE = {
-  0x00: 'Not loaded', 0x01: 'Laminated (TZexxx)', 0x03: 'Non-laminated (TZeNxxx)',
-  0x11: 'Heat shrink tube (HSexxx)', 0x4a: 'Continuous tape',
-  0x4b: 'Die-cut labels', 0xff: 'Unsupported',
-};
-const PHASES = {
-  0x000000: 'Ready', 0x000001: 'Feed', 0x010000: 'Printing',
-  0x010014: 'Cover open while receiving',
-};
-const TAPE_BGCOLORS = {
-  0x00: 'None', 0x01: 'White', 0x02: 'Other', 0x03: 'Clear', 0x04: 'Red',
-  0x05: 'Blue', 0x06: 'Yellow', 0x07: 'Green', 0x08: 'Black',
-  0x09: 'Clear (White text)', 0x20: 'Matte white', 0x21: 'Matte clear',
-  0x22: 'Matte silver', 0x23: 'Satin gold', 0x24: 'Satin silver',
-  0x30: 'Blue (D)', 0x31: 'Red (D)', 0x40: 'Fluorescent orange',
-  0x41: 'Fluorescent yellow', 0x50: 'Berry pink (S)', 0x51: 'Light gray (S)',
-  0x52: 'Lime green (S)', 0x60: 'Yellow (F)', 0x61: 'Pink (F)',
-  0x62: 'Blue (F)', 0x70: 'White (Heat shrink tube)', 0x90: 'White (Flex ID)',
-  0x91: 'Yellow (Flex ID)', 0xf0: 'Printing head cleaner', 0xf1: 'Stencil',
-  0xff: 'Unsupported',
-};
-const TAPE_FGCOLORS = {
-  0x00: 'None', 0x01: 'White', 0x02: 'Other', 0x04: 'Red', 0x05: 'Blue',
-  0x08: 'Black', 0x0a: 'Gold', 0x62: 'Blue (F)', 0xf0: 'Printing head cleaner',
-  0xf1: 'Stencil', 0xff: 'Unsupported',
-};
-const PRINT_FLAGS = { 6: 'Auto cut', 7: 'Hardware mirroring' };
-const STATUS_TYPE = {
-  0x00: 'Reply to status request', 0x01: 'Printing completed',
-  0x02: 'Error occured', 0x03: 'IF mode finished', 0x04: 'Power off',
-  0x05: 'Notification', 0x06: 'Phase change',
-};
-const NOTIFICATIONS = { 0x00: 'N/A', 0x01: 'Cover open', 0x02: 'Cover close' };
+type CodeTable = Record<number, string>;
 
-function describeCode(code, table) {
+const POWER: CodeTable = {
+  0: 'Battery full',
+  1: 'Battery half',
+  2: 'Battery low',
+  3: 'Battery critical',
+  4: 'AC',
+};
+const MODELS: CodeTable = {
+  56: 'QL-800',
+  57: 'QL-810W',
+  65: 'QL-820NWB',
+  102: 'PT-E550W',
+  104: 'PT-P750W',
+  111: 'PT-P900W',
+  112: 'PT-P950NW',
+  114: 'PT-P300BT',
+};
+const ERR_FLAGS: CodeTable = {
+  0: 'Replace media',
+  1: 'Expansion buffer full',
+  2: 'Communication error',
+  3: 'Communication buffer full',
+  4: 'Cover opened',
+  5: 'Overheat/Cancelled on printer side',
+  6: 'Feed error',
+  7: 'General system error',
+  8: 'Media not loaded',
+  9: 'End of media (Page too long)',
+  10: 'Cutter jammed',
+  11: 'Low battery',
+  12: 'Printer in use',
+  13: 'Printer not powered',
+  14: 'Overvoltage',
+  15: 'Fan error',
+};
+const TAPE_TYPE: CodeTable = {
+  0: 'Not loaded',
+  1: 'Laminated (TZexxx)',
+  3: 'Non-laminated (TZeNxxx)',
+  17: 'Heat shrink tube (HSexxx)',
+  74: 'Continuous tape',
+  75: 'Die-cut labels',
+  255: 'Unsupported',
+};
+const PHASES: CodeTable = {
+  0: 'Ready',
+  1: 'Feed',
+  65536: 'Printing',
+  65556: 'Cover open while receiving',
+};
+const TAPE_BGCOLORS: CodeTable = {
+  0: 'None',
+  1: 'White',
+  2: 'Other',
+  3: 'Clear',
+  4: 'Red',
+  5: 'Blue',
+  6: 'Yellow',
+  7: 'Green',
+  8: 'Black',
+  9: 'Clear (White text)',
+  32: 'Matte white',
+  33: 'Matte clear',
+  34: 'Matte silver',
+  35: 'Satin gold',
+  36: 'Satin silver',
+  48: 'Blue (D)',
+  49: 'Red (D)',
+  64: 'Fluorescent orange',
+  65: 'Fluorescent yellow',
+  80: 'Berry pink (S)',
+  81: 'Light gray (S)',
+  82: 'Lime green (S)',
+  96: 'Yellow (F)',
+  97: 'Pink (F)',
+  98: 'Blue (F)',
+  112: 'White (Heat shrink tube)',
+  144: 'White (Flex ID)',
+  145: 'Yellow (Flex ID)',
+  240: 'Printing head cleaner',
+  241: 'Stencil',
+  255: 'Unsupported',
+};
+const TAPE_FGCOLORS: CodeTable = {
+  0: 'None',
+  1: 'White',
+  2: 'Other',
+  4: 'Red',
+  5: 'Blue',
+  8: 'Black',
+  10: 'Gold',
+  98: 'Blue (F)',
+  240: 'Printing head cleaner',
+  241: 'Stencil',
+  255: 'Unsupported',
+};
+const PRINT_FLAGS: CodeTable = { 6: 'Auto cut', 7: 'Hardware mirroring' };
+const STATUS_TYPE: CodeTable = {
+  0: 'Reply to status request',
+  1: 'Printing completed',
+  2: 'Error occured',
+  3: 'IF mode finished',
+  4: 'Power off',
+  5: 'Notification',
+  6: 'Phase change',
+};
+const NOTIFICATIONS: CodeTable = { 0: 'N/A', 1: 'Cover open', 2: 'Cover close' };
+
+function describeCode(code: number, table: CodeTable): string {
   const name = table[code] !== undefined ? table[code] : 'Unknown';
   return `${name} (0x${code.toString(16).padStart(2, '0')})`;
 }
 
-function describeFlag(flagset, descset) {
+function describeFlag(flagset: number, descset: CodeTable): string {
   if (flagset === 0) return 'None';
-  const flags = [];
+  const flags: string[] = [];
   let ctr = 0;
   while (flagset !== 0) {
-    if (flagset & 1) flags.push(descset[ctr] !== undefined ? descset[ctr] : `bit${ctr}`);
+    if (flagset & 1) flags.push(descset[ctr] ?? `bit${ctr}`);
     ctr++;
     flagset >>>= 1;
   }
   return flags.join(', ');
 }
 
-function unpackStatus(bytes) {
+export function unpackStatus(bytes: Uint8Array) {
   if (bytes.length !== 32) throw new Error('Status must be exactly 32 bytes long.');
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   return {
@@ -299,8 +383,10 @@ function unpackStatus(bytes) {
   };
 }
 
-function printStatusLines(stat, verbose = false) {
-  const lines = [];
+export type PrinterStatus = ReturnType<typeof unpackStatus>;
+
+export function printStatusLines(stat: PrinterStatus, verbose = false): string[] {
+  const lines: string[] = [];
   if (!bytesEqual(stat.magic, new Uint8Array([0x80, 0x20, 0x42, 0x30]))) {
     throw new Error('Invalid magic');
   }
@@ -314,7 +400,7 @@ function printStatusLines(stat, verbose = false) {
   lines.push(`Tape width: ${stat.tape_width}mm`);
   lines.push(`Tape type: ${describeCode(stat.tape_type, TAPE_TYPE)}`);
   lines.push(`Print flags: ${describeFlag(stat.mode, PRINT_FLAGS)}`);
-  lines.push(`Fixed label length: ${stat.tape_length !== 0 ? stat.tape_length + 'mm' : 'N/A'}`);
+  lines.push(`Fixed label length: ${stat.tape_length !== 0 ? `${stat.tape_length}mm` : 'N/A'}`);
   lines.push(`Status: ${describeCode(stat.status_type, STATUS_TYPE)}`);
   lines.push(`Phase: ${describeCode((stat.phase_type << 16) | stat.phase, PHASES)}`);
   lines.push(`Notification: ${describeCode(stat.notification, NOTIFICATIONS)}`);
@@ -328,7 +414,7 @@ function printStatusLines(stat, verbose = false) {
 // ---------------------------------------------------------------------------
 // labelmaker.py — printer configuration and print job
 // ---------------------------------------------------------------------------
-function resetPrinterBytes() {
+export function resetPrinterBytes(): Uint8Array[] {
   return [
     new Uint8Array(64), // flush print buffer
     serializeControl('reset'),
@@ -336,20 +422,33 @@ function resetPrinterBytes() {
   ];
 }
 
-function configurePrinterBytes(rasterLines, tapeDim, opts = {}) {
+export interface ConfigureOptions {
+  compress?: boolean;
+  chaining?: boolean;
+  autoCut?: boolean;
+  endMargin?: number;
+}
+
+export function configurePrinterBytes(
+  rasterLines: number,
+  tapeDim: readonly [type: number, width: number, length: number],
+  opts: ConfigureOptions = {},
+): Uint8Array[] {
   const { compress = true, chaining = false, autoCut = false, endMargin = 0 } = opts;
   const [type_, width, length] = tapeDim;
-  const out = [];
+  const out: Uint8Array[] = [];
   out.push(...resetPrinterBytes());
 
   const activeFields =
     PrintParameterField.width | PrintParameterField.quality | PrintParameterField.recovery;
   // set_print_parameters: '4BI2B' = active_fields(B), media_type(B),
   // width_mm(B), length_mm(B), length_px(I), is_follow_up(B), sbz(B)
-  out.push(serializeControl('set_print_parameters',
-    activeFields, type_, width, length, rasterLines, 0, 0));
+  out.push(
+    serializeControl('set_print_parameters', activeFields, type_, width, length, rasterLines, 0, 0),
+  );
 
-  let pm = 0, pm2 = 0;
+  let pm = 0,
+    pm2 = 0;
   if (!chaining) pm2 |= PageModeAdvanced.no_page_chaining;
   if (autoCut) pm |= PageMode.auto_cut;
 
@@ -363,15 +462,38 @@ function configurePrinterBytes(rasterLines, tapeDim, opts = {}) {
 // ---------------------------------------------------------------------------
 // Web Serial transport
 // ---------------------------------------------------------------------------
-class SerialTransport {
-  constructor(port) {
+// A thrown value is normally an Error or a DOMException, but `catch` gives
+// `unknown`: read the fields without assuming a class.
+export function errorName(e: unknown): string | undefined {
+  return typeof e === 'object' && e !== null && 'name' in e ? String(e.name) : undefined;
+}
+
+export function errorMessage(e: unknown): string | undefined {
+  return typeof e === 'object' && e !== null && 'message' in e ? String(e.message) : undefined;
+}
+
+// What the print job needs from a connection (tests pass a fake).
+export interface PrintTransport {
+  write(bytes: Uint8Array): Promise<void>;
+  read(n: number, timeoutMs?: number): Promise<Uint8Array>;
+  resetInputBuffer(): Promise<void>;
+}
+
+export class SerialTransport implements PrintTransport {
+  port: SerialPort;
+  reader: ReadableStreamDefaultReader<Uint8Array> | null;
+  writer: WritableStreamDefaultWriter<Uint8Array> | null;
+  _readBuffer: Uint8Array;
+  _pumping = false;
+
+  constructor(port: SerialPort) {
     this.port = port;
     this.reader = null;
     this.writer = null;
     this._readBuffer = new Uint8Array(0);
   }
 
-  static isSupported() {
+  static isSupported(): boolean {
     if (typeof navigator === 'undefined' || !('serial' in navigator)) return false;
     // Firefox exposes navigator.serial but requestPort() is not implemented
     // (the API surface exists while the chooser never opens), so require the
@@ -379,7 +501,7 @@ class SerialTransport {
     return typeof navigator.serial.requestPort === 'function';
   }
 
-  static async requestPort() {
+  static async requestPort(): Promise<SerialPort> {
     // The PT-P300BT exposes the standard Bluetooth SPP (Serial Port Profile)
     // service. Chrome can access RFCOMM/SPP devices directly through Web
     // Serial; passing the SPP service class id makes the chooser list the
@@ -391,12 +513,12 @@ class SerialTransport {
       });
     } catch (e) {
       // Older Chrome builds may not accept the option: retry without it.
-      if (e.name !== 'TypeError') throw e;
+      if (errorName(e) !== 'TypeError') throw e;
       return await navigator.serial.requestPort();
     }
   }
 
-  async open(baudRate = 9600, onRetry = () => {}) {
+  async open(baudRate = 9600, onRetry: (attempt: number) => void = () => {}): Promise<void> {
     // On macOS Chrome's first Bluetooth open from idle fails after 10 s: the
     // SDP query only reports back once the link is up. That attempt does
     // bring the link up, for about 6 s more, so an immediate retry connects.
@@ -406,16 +528,21 @@ class SerialTransport {
         await this.port.open({ baudRate });
         break;
       } catch (e) {
-        if (!bluetooth || e.name !== 'NetworkError' || attempt >= 3) throw e;
+        if (!bluetooth || errorName(e) !== 'NetworkError' || attempt >= 3) throw e;
         onRetry(attempt);
       }
     }
+    if (!this.port.writable) throw new Error('Port is not writable');
     this.writer = this.port.writable.getWriter();
     // pyserial asserts DTR/RTS when opening a port; Web Serial does not.
     // Many Bluetooth SPP devices (the PT-P300BT included) stay silent
     // until the host asserts the modem lines, which is exactly the
     // "connected but no status bytes" symptom.
-    try { await this.port.setSignals({ dataTerminalReady: true, requestToSend: true }); } catch (e) { /* optional */ }
+    try {
+      await this.port.setSignals({ dataTerminalReady: true, requestToSend: true });
+    } catch (_e) {
+      /* optional */
+    }
     this._startReadPump();
   }
 
@@ -424,20 +551,23 @@ class SerialTransport {
   // per-call Promise.race approach left an orphaned read() promise alive
   // after each timeout; when the response finally arrived it was consumed
   // by that dead promise and the next read() saw 0 bytes forever.
-  _startReadPump() {
+  _startReadPump(): void {
     if (this._pumping) return;
     this._pumping = true;
     const pump = async () => {
       try {
-        if (!this.reader) this.reader = this.port.readable.getReader();
+        if (!this.reader) {
+          if (!this.port.readable) return;
+          this.reader = this.port.readable.getReader();
+        }
         while (this._pumping) {
           const { value, done } = await this.reader.read();
           if (done) break;
-          if (value && value.length) {
+          if (value?.length) {
             this._readBuffer = concatBytes([this._readBuffer, value]);
           }
         }
-      } catch (e) {
+      } catch (_e) {
         /* port closed or reader released */
       } finally {
         this._pumping = false;
@@ -446,12 +576,12 @@ class SerialTransport {
     pump();
   }
 
-  async write(bytes) {
+  async write(bytes: Uint8Array): Promise<void> {
     if (!this.writer) throw new Error('Port not open');
     await this.writer.write(bytes);
   }
 
-  async read(n, timeoutMs = 10000) {
+  async read(n: number, timeoutMs = 10000): Promise<Uint8Array> {
     // Read exactly n bytes (or fewer on timeout) from the pump buffer.
     const deadline = Date.now() + timeoutMs;
     while (this._readBuffer.length < n && Date.now() < deadline) {
@@ -463,24 +593,41 @@ class SerialTransport {
     return out;
   }
 
-  async resetInputBuffer() {
+  async resetInputBuffer(): Promise<void> {
     this._readBuffer = new Uint8Array(0);
   }
 
-  async close() {
+  async close(): Promise<void> {
     this._pumping = false;
-    try { if (this.reader) { await this.reader.cancel(); this.reader.releaseLock(); this.reader = null; } } catch (e) {}
-    try { if (this.writer) { this.writer.releaseLock(); this.writer = null; } } catch (e) {}
-    try { await this.port.close(); } catch (e) {}
+    try {
+      if (this.reader) {
+        await this.reader.cancel();
+        this.reader.releaseLock();
+        this.reader = null;
+      }
+    } catch (_e) {}
+    try {
+      if (this.writer) {
+        this.writer.releaseLock();
+        this.writer = null;
+      }
+    } catch (_e) {}
+    try {
+      await this.port.close();
+    } catch (_e) {}
   }
 }
 
 // ---------------------------------------------------------------------------
 // labelmaker.py — do_print_job / wait_for_print_completion
 // ---------------------------------------------------------------------------
-async function waitForPrintCompletion(transport, timeout = 60, onLog = () => {}) {
+export async function waitForPrintCompletion(
+  transport: Pick<PrintTransport, 'read'>,
+  timeout = 60,
+  onLog: (line: string) => void = () => {},
+): Promise<void> {
   const deadline = Date.now() + timeout * 1000;
-  let buffer = new Uint8Array(0);
+  let buffer: Uint8Array = new Uint8Array(0);
   while (Date.now() < deadline) {
     const chunk = await transport.read(32 - buffer.length, 1000);
     buffer = concatBytes([buffer, chunk]);
@@ -489,7 +636,7 @@ async function waitForPrintCompletion(transport, timeout = 60, onLog = () => {})
     buffer = buffer.subarray(32);
     for (const line of printStatusLines(status)) onLog(line);
     if (status.err || status.status_type === 0x02) {
-      throw new Error('Printer reported an error: ' + describeFlag(status.err, ERR_FLAGS));
+      throw new Error(`Printer reported an error: ${describeFlag(status.err, ERR_FLAGS)}`);
     }
     if (status.status_type === 0x01) return;
     if (status.status_type === 0x04) {
@@ -499,10 +646,25 @@ async function waitForPrintCompletion(transport, timeout = 60, onLog = () => {})
   throw new Error(`Printer did not confirm print completion within ${timeout} seconds.`);
 }
 
-async function doPrintJob(transport, args, data, onLog = () => {}, onProgress = () => {}) {
+// The fields of the label args that the print job reads.
+export interface PrintJobArgs {
+  no_feed: boolean;
+  auto_cut: boolean;
+  end_margin: number;
+  nocomp: boolean;
+  no_print?: boolean;
+}
+
+export async function doPrintJob(
+  transport: PrintTransport,
+  args: PrintJobArgs,
+  data: Uint8Array,
+  onLog: (line: string) => void = () => {},
+  onProgress: (bar: string) => void = () => {},
+): Promise<void> {
   onLog('=> Querying printer status...');
 
-  let status = null;
+  let status: PrinterStatus | null = null;
   for (let attempt = 1; attempt <= 6; attempt++) {
     for (const b of resetPrinterBytes()) await transport.write(b);
     await transport.resetInputBuffer();
@@ -515,7 +677,9 @@ async function doPrintJob(transport, args, data, onLog = () => {}, onProgress = 
     onLog(`   ...no status yet (attempt ${attempt}/6, got ${resp.length} bytes); retrying...`);
   }
   if (status === null) {
-    throw new Error('Printer did not respond to status query. Make sure it is connected and active in Bluetooth, then try again.');
+    throw new Error(
+      'Printer did not respond to status query. Make sure it is connected and active in Bluetooth, then try again.',
+    );
   }
   for (const line of printStatusLines(status)) onLog(line);
 
@@ -554,23 +718,3 @@ async function doPrintJob(transport, args, data, onLog = () => {}, onProgress = 
   }
   onLog('=> All done.');
 }
-
-// Expose the API on the global object (no bundler needed).
-window.PTPrinter = {
-  serializeControl,
-  serializeData,
-  encodeRasterTransfer,
-  packbitsEncode,
-  unpackStatus,
-  printStatusLines,
-  resetPrinterBytes,
-  configurePrinterBytes,
-  SerialTransport,
-  doPrintJob,
-  waitForPrintCompletion,
-  CompressionType,
-  CommandSet,
-  PageMode,
-  PageModeAdvanced,
-  PrintParameterField,
-};

@@ -1,6 +1,6 @@
 """Emit reference raster bytes from printlabel.py for comparison with the web port.
 
-Usage: python web/ref_raster.py <case>
+Usage: uv run python tests/ref_raster.py <case>
 Prints JSON: {"width": W, "height": H, "bytes": "<hex>"} for the rasterized
 label (the exact bytes sent to the printer, 1 bit per pixel).
 """
@@ -13,6 +13,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import printlabel as pl
+
+FONT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "FiraCode-subset.ttf")
 
 CASES = {
     # name: (text, extra kwargs)
@@ -43,7 +45,7 @@ CASES = {
 
 def build(case):
     text, extra = CASES[case]
-    args = pl.set_args().parse_args(["-n", "x", "arial.ttf", text])
+    args = pl.set_args().parse_args(["-n", "x", FONT, text])
     for k, v in extra.items():
         setattr(args, k, v)
     buf = io.StringIO()
@@ -52,7 +54,6 @@ def build(case):
         padded = pl.rasterize_label(image, args)
     # 1-bit image -> bytes, 1 = black dot.
     w, h = padded.size
-    padded.tobytes()
     # PIL '1' mode packs 8 px/byte, MSB first. Expand to 1 byte per pixel.
     out = bytearray(w * h)
     for y in range(h):

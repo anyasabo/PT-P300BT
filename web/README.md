@@ -8,50 +8,37 @@ label printer. It provides a HTML/CSS/JavaScript application to print over Bluet
 
 Chrome and Edge can list the installed fonts. Click the font list (or **List installed fonts**) and allow the permission. The page then loads the list by itself on each visit. This needs HTTPS or `localhost`. Fonts that you activate in Font Book are included. A family with more than one style also shows a **Style** list, for example Bold. Other browsers show a curated list only: use **Load font file…** for other fonts.
 
-## Files in this directory
+## Files
 
-| File | Purpose |
-| --- | --- |
-| `index.html` | The application page. |
-| `favicon.ico` | Application icon (label/tape motif, 16 and 32 px frames). |
-| `style.css` | Modern dark theme. |
-| `app.js` | GUI controller: builds the args object from the controls, drives the live preview, zoom/pan, merge list, printer connection, print flow, save PNG, dynamic ligature list, log Copy/Clear. |
-| `label.js` | printlabel label algorithms: auto-fit font sizing, multiline layout, uniform font sizing, emoji raster overlay (in-line and print-area band), luminance-based B/W emoji, image merge/crop/resize, fixed width, text stretching, rulers, TAB expansion, Unicode escapes, OpenType ligature shaping via SVG `font-feature-settings`, and the rotate/invert/mirror/threshold/128-px rasterization. Exposed as `window.PTLabel`. |
-| `printer.js` | printer protocol: PTCBP command serialization, PackBits RLE compression, status-register parsing, the full print job flow, and the Web Serial transport (`SerialTransport`) that opens Bluetooth RFCOMM/SPP devices. Exposed as `window.PTPrinter`. |
-| `test_printer.mjs` | Node test suite for the protocol (40 tests): command bytes, PackBits, status parsing, printer configuration, print job flow with a fake transport. Run: `node web/test_printer.mjs`. |
-| `test_label.mjs` | Node test suite for the label algorithms (35 tests, needs `npm i canvas`): auto-fit convergence, rasterization, emoji detection, TAB expansion, Unicode escapes. Run: `node web/test_label.mjs`. |
-| `test_web.mjs` | Playwright end-to-end suite (63 tests) driving the real page in Chrome and WebKit: preview, every control, zoom, converted-raster view, dynamic ligature list, save PNG, print guard, image merge, full print flow with a mocked serial port, and the unsupported-browser banner. Run: `node web/test_web.mjs` (needs `npm run serve` + `npx playwright install chrome webkit`). |
-| `test_parity.mjs` | Compares the web raster output with the Python reference byte-for-byte for many feature combinations (uses node-canvas, whose font metrics match Pillow). Run: `node web/test_parity.mjs`. |
-| `ref_raster.py` | Emits reference raster bytes from `printlabel.py` as JSON (`{"width", "height", "bytes"}`) for the parity test. Usage: `python web/ref_raster.py <case>`. |
-| `dbg.py` | Debug helper that prints the Python raster as ASCII art (for visual comparison with `dbgjs.mjs`). |
-| `dbgjs.mjs` | Debug helper that prints the JavaScript raster as ASCII art (same format as `dbg.py`). |
+| Path                 | Purpose                                                                                                              |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `index.html`         | The application page.                                                                                                |
+| `public/favicon.ico` | The application icon.                                                                                                |
+| `src/app.ts`         | The GUI controller. It reads the controls, runs the live preview and starts a print.                                 |
+| `src/label.ts`       | The label algorithms. They are a port of `printlabel.py`.                                                            |
+| `src/printer.ts`     | The printer protocol and the Web Serial transport. They are a port of `ptcbp.py`, `ptstatus.py` and `labelmaker.py`. |
+| `src/style.css`      | The theme.                                                                                                           |
+| `tests/unit/`        | Vitest tests for the protocol, the label algorithms and the parity with Python.                                      |
+| `tests/e2e/`         | Playwright tests for the page, with a mock serial port.                                                              |
 
 ## Running it
 
-Web Serial requires a **secure context**, so serve the folder over HTTP
-(`file://` works for the preview but **not** for the serial port):
+Web Serial needs a **secure context**. `file://` shows the preview, but the serial port does not operate. Run the page from a server:
 
 ```bash
-cd web
-python -m http.server 8000
+mise run dev
 # then open http://localhost:8000/ in Chrome or Edge
-```
-
-or, from the repository root:
-
-```bash
-npm run serve
 ```
 
 ## Browser support
 
-| Browser | Preview & algorithms | Bluetooth printing |
-| --- | --- | --- |
-| Chrome / Edge (desktop, 117+) | ✅ | ✅ (Web Serial + RFCOMM/SPP) |
-| Chrome on Android | ✅ | ✅ |
-| Firefox 155+ (desktop) | ✅ | ⚠️ (Web Serial present; RFCOMM/SPP support may vary — Chrome/Edge recommended) |
-| Older Firefox | ✅ | ❌ (no Web Serial) |
-| Safari (macOS/iOS) | ✅ | ❌ (no Web Serial) |
+| Browser                       | Preview & algorithms | Bluetooth printing                                                             |
+| ----------------------------- | -------------------- | ------------------------------------------------------------------------------ |
+| Chrome / Edge (desktop, 117+) | ✅                   | ✅ (Web Serial + RFCOMM/SPP)                                                   |
+| Chrome on Android             | ✅                   | ✅                                                                             |
+| Firefox 155+ (desktop)        | ✅                   | ⚠️ (Web Serial present; RFCOMM/SPP support may vary — Chrome/Edge recommended) |
+| Older Firefox                 | ✅                   | ❌ (no Web Serial)                                                             |
+| Safari (macOS/iOS)            | ✅                   | ❌ (no Web Serial)                                                             |
 
 The **"Web Serial available"** badge means the browser exposes the Web
 Serial API with a working `requestPort()` (checked at runtime: Firefox
@@ -73,7 +60,4 @@ page then retries by itself, and the retry connects while the link is up.
 
 ## Tests
 
-```bash
-npm test          # runs all three suites
-npm run serve     # local server needed by test_web.mjs
-```
+Refer to [CONTRIBUTING.md](../CONTRIBUTING.md).

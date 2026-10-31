@@ -1,5 +1,5 @@
 /*
- * label.js — faithful JavaScript port of printlabel.py's label builder.
+ * label.ts — faithful TypeScript port of printlabel.py's label builder.
  *
  * Ports the algorithms 1:1:
  *   - build_label()            (auto-fit loop, multiline, emoji, merge, rulers)
@@ -14,14 +14,63 @@
  * the same font size and the preview matches the printed tape.
  */
 
-'use strict';
+// The label options: the GUI's args namespace, mirrors ptgui._make_args.
+export interface LabelArgs {
+  comport: string;
+  fixed_width: number | null;
+  fixed_font_size: number | null;
+  fontname: string;
+  text_to_print: string[];
+  unicode: boolean;
+  lines: boolean;
+  image: string | null;
+  merge: string[];
+  resize: number;
+  x_merge: number;
+  y_merge: number;
+  merge_gap: number;
+  no_print: boolean;
+  no_feed: boolean;
+  auto_cut: boolean;
+  end_margin: number;
+  raw: boolean;
+  nocomp: boolean;
+  fill: string;
+  stroke_fill: string | null;
+  stroke_width: number;
+  text_size: number | null;
+  font_scale: number | null;
+  h_padding: number;
+  v_shift: number;
+  line_spacing: number;
+  center_text: boolean;
+  tape_width: number;
+  emoji_print_area: boolean;
+  uniform_font: boolean;
+  ligatures: string | null;
+  mono_emoji: boolean;
+  luma_lo: number;
+  luma_hi: number;
+  tab_width: number;
+  white_level: number;
+  threshold: number;
+}
+
+export type BBox = [number, number, number, number];
+type Point = [x: number, y: number];
+type Anchor = 'lt' | 'ls';
+
+interface BBoxOptions {
+  anchor?: Anchor | null;
+  whole?: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Constants (printlabel.py)
 // ---------------------------------------------------------------------------
-const MM_PER_DOT = 0.149;
-const HEIGHT_OF_THE_TAPE = 86;
-const HEIGHT_OF_THE_IMAGE = 88;
+export const MM_PER_DOT = 0.149;
+export const HEIGHT_OF_THE_TAPE = 86;
+export const HEIGHT_OF_THE_IMAGE = 88;
 const UNIFORM_SAMPLE = 'Agiy';
 const EMOJI_FONT_STACK =
   '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji","Twemoji Mozilla",sans-serif';
@@ -29,9 +78,10 @@ const EMOJI_FONT_STACK =
 // ---------------------------------------------------------------------------
 // Emoji detection (is_emoji_char)
 // ---------------------------------------------------------------------------
-function isEmojiChar(ch) {
+export function isEmojiChar(ch: string): boolean {
   if (!ch) return false;
   const cp = ch.codePointAt(0);
+  if (cp === undefined) return false;
   if (cp >= 0x1f000 && cp <= 0x1faff) return true;
   if (cp >= 0x2600 && cp <= 0x27bf) return true;
   if (cp >= 0x2b00 && cp <= 0x2bff) return true;
@@ -44,10 +94,16 @@ function isEmojiChar(ch) {
 // ---------------------------------------------------------------------------
 // Measurement canvas (shared)
 // ---------------------------------------------------------------------------
-const _measureCanvas = document.createElement('canvas');
-const _measureCtx = _measureCanvas.getContext('2d');
+export function ctx2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D context is not available');
+  return ctx;
+}
 
-function fontString(family, size) {
+const _measureCanvas = document.createElement('canvas');
+const _measureCtx = ctx2d(_measureCanvas);
+
+function fontString(family: string, size: number): string {
   return `${size}px ${family}`;
 }
 
@@ -60,16 +116,18 @@ function fontString(family, size) {
 // rendering is async (SVG -> Image -> canvas) and cached per (text, font).
 // ---------------------------------------------------------------------------
 const _SVG_NS = 'http://www.w3.org/2000/svg';
-let _svgRoot = null;
-function _svgAvailable() {
-  return typeof document !== 'undefined'
-    && typeof document.createElementNS === 'function'
-    && typeof document.body !== 'undefined'
-    && typeof Blob !== 'undefined'
-    && typeof URL !== 'undefined'
-    && typeof URL.createObjectURL === 'function';
+let _svgRoot: SVGSVGElement | null = null;
+function _svgAvailable(): boolean {
+  return (
+    typeof document !== 'undefined' &&
+    typeof document.createElementNS === 'function' &&
+    typeof document.body !== 'undefined' &&
+    typeof Blob !== 'undefined' &&
+    typeof URL !== 'undefined' &&
+    typeof URL.createObjectURL === 'function'
+  );
 }
-function _svgMeasureRoot() {
+function _svgMeasureRoot(): SVGSVGElement {
   if (!_svgRoot) {
     _svgRoot = document.createElementNS(_SVG_NS, 'svg');
     _svgRoot.setAttribute('width', '0');
@@ -84,12 +142,17 @@ function _svgMeasureRoot() {
 
 // CSS-safe font family: installed fonts can have names that are not valid
 // unquoted (e.g. "Foo 3D"), and an invalid ctx.font is silently ignored.
-function _cssFamily(family) {
+function _cssFamily(family: string): string {
   return `'${family.replace(/'/g, '')}'`;
 }
 
 // Raw measurement with an optional feature (feature=null => default shaping).
-function svgMeasureRaw(text, family, size, feature) {
+function svgMeasureRaw(
+  text: string,
+  family: string,
+  size: number,
+  feature: string | null,
+): number | null {
   if (!text || !_svgAvailable()) return null;
   const root = _svgMeasureRoot();
   const t = document.createElementNS(_SVG_NS, 'text');
@@ -99,13 +162,22 @@ function svgMeasureRaw(text, family, size, feature) {
   t.textContent = text;
   root.appendChild(t);
   let len = 0;
-  try { len = t.getComputedTextLength(); } catch (e) { len = 0; }
+  try {
+    len = t.getComputedTextLength();
+  } catch (_e) {
+    len = 0;
+  }
   root.removeChild(t);
   return len;
 }
 
 // Synchronous shaped advance width (Pillow getlength with the feature on).
-function svgMeasure(text, family, size, feature) {
+function svgMeasure(
+  text: string,
+  family: string,
+  size: number,
+  feature: string | null,
+): number | null {
   if (!feature) return null;
   return svgMeasureRaw(text, family, size, feature);
 }
@@ -113,13 +185,68 @@ function svgMeasure(text, family, size, feature) {
 // Common GSUB feature tags probed to build the dynamic --ligatures list
 // (same family of tags printlabel._lig_features() finds in real fonts).
 const LIGATURE_PROBE_TAGS = [
-  'liga', 'dlig', 'clig', 'calt', 'rlig', 'kern', 'ccmp', 'unic', 'hist',
-  'smcp', 'c2sc', 'pcap', 'c2pc', 'onum', 'pnum', 'tnum', 'lnum', 'frac',
-  'afrc', 'ordn', 'sinf', 'sups', 'numr', 'dnom', 'zero', 'case', 'salt',
-  'ss01', 'ss02', 'ss03', 'ss04', 'ss05', 'ss06', 'ss07', 'ss08', 'ss09',
-  'ss10', 'ss11', 'ss12', 'ss13', 'ss14', 'ss15', 'ss16', 'ss17', 'ss18',
-  'ss19', 'ss20', 'cv01', 'cv02', 'cv03', 'cv04', 'cv05', 'cv06', 'cv07',
-  'cv08', 'cv09', 'cv10', 'swsh', 'cswh', 'titl', 'nalt', 'jalt',
+  'liga',
+  'dlig',
+  'clig',
+  'calt',
+  'rlig',
+  'kern',
+  'ccmp',
+  'unic',
+  'hist',
+  'smcp',
+  'c2sc',
+  'pcap',
+  'c2pc',
+  'onum',
+  'pnum',
+  'tnum',
+  'lnum',
+  'frac',
+  'afrc',
+  'ordn',
+  'sinf',
+  'sups',
+  'numr',
+  'dnom',
+  'zero',
+  'case',
+  'salt',
+  'ss01',
+  'ss02',
+  'ss03',
+  'ss04',
+  'ss05',
+  'ss06',
+  'ss07',
+  'ss08',
+  'ss09',
+  'ss10',
+  'ss11',
+  'ss12',
+  'ss13',
+  'ss14',
+  'ss15',
+  'ss16',
+  'ss17',
+  'ss18',
+  'ss19',
+  'ss20',
+  'cv01',
+  'cv02',
+  'cv03',
+  'cv04',
+  'cv05',
+  'cv06',
+  'cv07',
+  'cv08',
+  'cv09',
+  'cv10',
+  'swsh',
+  'cswh',
+  'titl',
+  'nalt',
+  'jalt',
 ];
 
 // Dynamic --ligatures list (port of ptgui._refresh_ligature_combo): a tag is
@@ -129,12 +256,12 @@ const LIGATURE_PROBE_TAGS = [
 // against the untouched sample isolates the tag's own effect. This avoids
 // listing tags that exist in the GSUB table but change nothing for the
 // sample, while still catching every tag that visibly alters the text.
-function probeLigatureFeatures(family, size = 40) {
+export function probeLigatureFeatures(family: string, size = 40): string[] {
   if (!_svgAvailable()) return [];
   const sample = 'AVTaw fi ffi fl 0123 --> <= abcdefghij ABCXYZ';
   const base = svgMeasureRaw(sample, family, size, null);
   if (base == null) return [];
-  const out = [];
+  const out: string[] = [];
   for (const tag of LIGATURE_PROBE_TAGS) {
     const w = svgMeasureRaw(sample, family, size, tag);
     if (w != null && Math.abs(w - base) > 0.01) out.push(tag);
@@ -142,32 +269,63 @@ function probeLigatureFeatures(family, size = 40) {
   return out;
 }
 
-function _escapeXml(s) {
-  return s.replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;',
-  }[c]));
+const _XML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&apos;',
+};
+
+function _escapeXml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) => _XML_ESCAPES[c] ?? c);
 }
 
 // Async shaped render -> { canvas, pad, baseline } (baseline y inside canvas).
-const _ligRenderCache = new Map();
+interface LigatureRender {
+  canvas: HTMLCanvasElement;
+  pad: number;
+  baseline: number;
+}
+
+const _ligRenderCache = new Map<string, LigatureRender>();
 const _LIG_CACHE_MAX = 256;
-function _ligKey(text, family, size, feature, fill, strokeWidth, strokeFill) {
+function _ligKey(
+  text: string,
+  family: string,
+  size: number,
+  feature: string | null,
+  fill: string,
+  strokeWidth: number,
+  strokeFill: string | null,
+): string {
   return `${text}\u0000${family}\u0000${size}\u0000${feature}\u0000${fill}\u0000${strokeWidth}\u0000${strokeFill || ''}`;
 }
-function svgRender(text, family, size, feature, fill, strokeWidth, strokeFill) {
+function svgRender(
+  text: string,
+  family: string,
+  size: number,
+  feature: string | null,
+  fill: string,
+  strokeWidth: number,
+  strokeFill: string | null,
+): Promise<LigatureRender | null> {
   if (!_svgAvailable()) return Promise.resolve(null);
   const key = _ligKey(text, family, size, feature, fill, strokeWidth, strokeFill);
-  if (_ligRenderCache.has(key)) return Promise.resolve(_ligRenderCache.get(key));
+  const cached = _ligRenderCache.get(key);
+  if (cached) return Promise.resolve(cached);
   return new Promise((resolve) => {
     const pad = Math.ceil(size * 0.6) + 4;
     const adv = svgMeasure(text, family, size, feature);
     const w = Math.ceil((adv || size * text.length) + pad * 2);
     const h = Math.ceil(size * 2.2) + pad * 2;
     const baseline = pad + size;
-    const stroke = (strokeWidth > 0 && strokeFill)
-      ? ` stroke="${strokeFill}" stroke-width="${strokeWidth * 2}" stroke-linejoin="round"`
-      : '';
-    const svg = `<svg xmlns="${_SVG_NS}" width="${w}" height="${h}">` +
+    const stroke =
+      strokeWidth > 0 && strokeFill
+        ? ` stroke="${strokeFill}" stroke-width="${strokeWidth * 2}" stroke-linejoin="round"`
+        : '';
+    const svg =
+      `<svg xmlns="${_SVG_NS}" width="${w}" height="${h}">` +
       `<text x="${pad}" y="${baseline}" font-family="${_cssFamily(family)}" font-size="${size}" ` +
       `fill="${fill}"${stroke} style="font-feature-settings:'${feature}' 1">` +
       `${_escapeXml(text)}</text></svg>`;
@@ -176,28 +334,47 @@ function svgRender(text, family, size, feature, fill, strokeWidth, strokeFill) {
     const url = URL.createObjectURL(blob);
     img.onload = () => {
       const c = document.createElement('canvas');
-      c.width = w; c.height = h;
-      c.getContext('2d').drawImage(img, 0, 0);
+      c.width = w;
+      c.height = h;
+      ctx2d(c).drawImage(img, 0, 0);
       URL.revokeObjectURL(url);
       const entry = { canvas: c, pad, baseline };
       if (_ligRenderCache.size >= _LIG_CACHE_MAX) {
-        _ligRenderCache.delete(_ligRenderCache.keys().next().value);
+        const oldest = _ligRenderCache.keys().next().value;
+        if (oldest !== undefined) _ligRenderCache.delete(oldest);
       }
       _ligRenderCache.set(key, entry);
       resolve(entry);
     };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
     img.src = url;
   });
 }
 
 // Pre-render every non-emoji chunk so the synchronous draw path can blit them.
-async function preRenderLigatures(font, text, feature, fill, strokeWidth, strokeFill) {
+async function preRenderLigatures(
+  font: MixedFont,
+  text: string,
+  feature: string | null,
+  fill: string,
+  strokeWidth: number,
+  strokeFill: string | null,
+): Promise<void> {
   if (!feature || !text) return;
   for (const [f, chunk] of font._split(text)) {
     if (f !== null && chunk && !chunk.includes('\n')) {
-      await svgRender(chunk, font.font.family, font.font.size, feature,
-        fill, strokeWidth, strokeFill);
+      await svgRender(
+        chunk,
+        font.font.family,
+        font.font.size,
+        feature,
+        fill,
+        strokeWidth,
+        strokeFill,
+      );
     }
   }
 }
@@ -205,7 +382,7 @@ async function preRenderLigatures(font, text, feature, fill, strokeWidth, stroke
 // Advance width using the shaped (ligature-aware) advances; falls back to
 // the plain font measurement when shaping is unavailable. Mirrors the way
 // _draw_text_mixed advances the pen when --ligatures is active.
-function shapedWidth(font, text) {
+function shapedWidth(font: MixedFont, text: string): number {
   let total = 0;
   for (const [f, chunk] of font._split(text)) {
     if (f === null) {
@@ -223,20 +400,24 @@ function shapedWidth(font, text) {
 // ---------------------------------------------------------------------------
 // WebFont — Pillow-like font surface over Canvas 2D
 // ---------------------------------------------------------------------------
-class WebFont {
-  constructor(family, size) {
+export class WebFont {
+  family: string;
+  size: number;
+  path: string;
+
+  constructor(family: string, size: number) {
     this.family = family;
     this.size = size;
     this.path = family; // used as a cache key by callers
   }
 
-  _ctx() {
+  _ctx(): CanvasRenderingContext2D {
     _measureCtx.font = fontString(_cssFamily(this.family), this.size);
     return _measureCtx;
   }
 
   // Advance width (Pillow getlength).
-  getlength(text) {
+  getlength(text: string): number {
     if (!text) return 0;
     const ctx = this._ctx();
     return ctx.measureText(text).width;
@@ -247,7 +428,7 @@ class WebFont {
   // PEN ADVANCE (e.g. 'ciao'@87 -> (0,0,159,64) with getlength 159.0;
   // 'W.,'@87 -> x2 130 with getlength 129.9), not the ink extent. Using the
   // advance keeps the right padding identical to the Python app.
-  getbbox(text, opts = {}) {
+  getbbox(text: string, opts: BBoxOptions = {}): BBox {
     const anchor = opts.anchor || null;
     if (!text) return [0, 0, 0, 0];
     const ctx = this._ctx();
@@ -255,7 +436,7 @@ class WebFont {
     // opts.whole gives whole dots, like Pillow. With a fractional ascent the
     // browser snaps the baseline, so the tops of round letters can land one
     // row above the printable band.
-    const dots = (v) => (opts.whole ? Math.ceil(v - 0.05) : v);
+    const dots = (v: number) => (opts.whole ? Math.ceil(v - 0.05) : v);
     const ascent = dots(m.actualBoundingBoxAscent || 0);
     const descent = dots(m.actualBoundingBoxDescent || 0);
     const left = m.actualBoundingBoxLeft || 0;
@@ -272,7 +453,7 @@ class WebFont {
   }
 
   // Font metrics (ascent, descent) — approximated from a tall sample.
-  getmetrics() {
+  getmetrics(): [ascent: number, descent: number] {
     const ctx = this._ctx();
     const m = ctx.measureText('Mg');
     return [m.actualBoundingBoxAscent || this.size, m.actualBoundingBoxDescent || 0];
@@ -282,7 +463,12 @@ class WebFont {
 // ---------------------------------------------------------------------------
 // Emoji raster (emoji_thumbnail / _emoji_raster_to_height)
 // ---------------------------------------------------------------------------
-function emojiRasterToHeight(char, targetH, mono) {
+interface EmojiRaster {
+  raster: HTMLCanvasElement | null;
+  width: number;
+}
+
+function emojiRasterToHeight(char: string, targetH: number, mono: boolean): EmojiRaster {
   const big = Math.max(32, Math.round(targetH * 2));
   const pad = Math.round(big * 0.6);
   const w = big * 2 + pad * 2;
@@ -290,13 +476,13 @@ function emojiRasterToHeight(char, targetH, mono) {
   const cv = document.createElement('canvas');
   cv.width = w;
   cv.height = h;
-  const ctx = cv.getContext('2d');
+  const ctx = ctx2d(cv);
   ctx.clearRect(0, 0, w, h);
   ctx.font = fontString(EMOJI_FONT_STACK, big);
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'left';
   // mono: force text presentation (monochrome outline) with U+FE0E.
-  const glyph = mono ? char + '\uFE0E' : char;
+  const glyph = mono ? `${char}\uFE0E` : char;
   ctx.fillStyle = '#000';
   ctx.fillText(glyph, pad, pad + big);
   const b = inkBBox(ctx, w, h);
@@ -305,11 +491,11 @@ function emojiRasterToHeight(char, targetH, mono) {
   const cw = x1 - x0;
   const chh = y1 - y0;
   if (chh <= 0) return { raster: null, width: 0 };
-  const newW = Math.max(1, Math.round(cw * targetH / chh));
+  const newW = Math.max(1, Math.round((cw * targetH) / chh));
   const out = document.createElement('canvas');
   out.width = newW;
   out.height = targetH;
-  const octx = out.getContext('2d');
+  const octx = ctx2d(out);
   octx.imageSmoothingEnabled = true;
   octx.imageSmoothingQuality = 'high';
   octx.drawImage(cv, x0, y0, cw, chh, 0, 0, newW, targetH);
@@ -317,12 +503,15 @@ function emojiRasterToHeight(char, targetH, mono) {
 }
 
 // Ink bounding box of a canvas (alpha > 0), or null when empty.
-function inkBBox(ctx, w, h) {
+function inkBBox(ctx: CanvasRenderingContext2D, w: number, h: number): BBox | null {
   const data = ctx.getImageData(0, 0, w, h).data;
-  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  let x0 = w,
+    y0 = h,
+    x1 = -1,
+    y1 = -1;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (data[(y * w + x) * 4 + 3] > 0) {
+      if ((data[(y * w + x) * 4 + 3] ?? 0) > 0) {
         if (x < x0) x0 = x;
         if (x > x1) x1 = x;
         if (y < y0) y0 = y;
@@ -340,28 +529,33 @@ function inkBBox(ctx, w, h) {
 // partial alpha. Pixels outside the emoji shapes (very faint background
 // residue with alpha close to 0) are dropped, so the result never shows a
 // translucent gray veil on a printer that only has 1-bit dots.
-function luminanceMono(canvas, lo = 140.0, hi = 175.0) {
+function luminanceMono(canvas: HTMLCanvasElement, lo = 140.0, hi = 175.0): void {
   if (lo > hi) [lo, hi] = [hi, lo];
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width, h = canvas.height;
+  const ctx = ctx2d(canvas);
+  const w = canvas.width,
+    h = canvas.height;
   const img = ctx.getImageData(0, 0, w, h);
   const d = img.data;
   for (let i = 0; i < d.length; i += 4) {
     const a = d[i + 3];
     if (!a) continue;
-    const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    const lum = 0.299 * (d[i] ?? 0) + 0.587 * (d[i + 1] ?? 0) + 0.114 * (d[i + 2] ?? 0);
     if (lum <= lo) {
-      d[i] = 0; d[i + 1] = 0; d[i + 2] = 0; // solid ink (alpha kept)
+      d[i] = 0;
+      d[i + 1] = 0;
+      d[i + 2] = 0; // solid ink (alpha kept)
     } else if (lum >= hi) {
       d[i + 3] = 0; // clear (white label)
     } else {
-      const keep = Math.round(a * (hi - lum) / (hi - lo));
+      const keep = Math.round((a * (hi - lum)) / (hi - lo));
       // Faint antialias residue (keep < 48) would print as a smudge of
       // nearly-invisible dots: drop it like the Python pipeline, whose
       // rasterization step discards pixels below the threshold.
       if (keep < 48) d[i + 3] = 0;
       else {
-        d[i] = 0; d[i + 1] = 0; d[i + 2] = 0;
+        d[i] = 0;
+        d[i + 1] = 0;
+        d[i + 2] = 0;
         d[i + 3] = keep;
       }
     }
@@ -372,8 +566,29 @@ function luminanceMono(canvas, lo = 140.0, hi = 175.0) {
 // ---------------------------------------------------------------------------
 // MixedFont — emoji-aware wrapper (port of _MixedFont)
 // ---------------------------------------------------------------------------
-class MixedFont {
-  constructor(family, size, opts = {}) {
+export interface MixedFontOptions {
+  uniform?: boolean;
+  mono?: boolean;
+  lumaLo?: number | null;
+  lumaHi?: number | null;
+  ligatures?: string | null;
+}
+
+export class MixedFont {
+  font: WebFont;
+  size: number;
+  _uniform: boolean;
+  _mono: boolean;
+  _lumaLo: number;
+  _lumaHi: number;
+  _emojiTargetH: number | null;
+  _emojiBand: boolean;
+  _emojiBandY: number;
+  _emojiCache: Map<string, EmojiRaster>;
+  _path: string;
+  _ligatures: string | null;
+
+  constructor(family: string, size: number, opts: MixedFontOptions = {}) {
     this.font = new WebFont(family, size);
     this.size = size;
     this._uniform = !!opts.uniform;
@@ -388,16 +603,19 @@ class MixedFont {
     this._ligatures = opts.ligatures || null;
   }
 
-  isEmoji(ch) {
+  isEmoji(ch: string): boolean {
     return isEmojiChar(ch);
   }
 
-  _split(text) {
-    const chunks = [];
+  _split(text: string): [font: WebFont | null, chunk: string][] {
+    const chunks: [WebFont | null, string][] = [];
     let buf = '';
     for (const ch of text) {
       if (this.isEmoji(ch)) {
-        if (buf) { chunks.push([this.font, buf]); buf = ''; }
+        if (buf) {
+          chunks.push([this.font, buf]);
+          buf = '';
+        }
         chunks.push([null, ch]);
       } else {
         buf += ch;
@@ -407,7 +625,7 @@ class MixedFont {
     return chunks;
   }
 
-  _emojiWidth(ch) {
+  _emojiWidth(ch: string): number {
     if (this._emojiBand) return this.font.getlength(' ');
     if (this._emojiTargetH) {
       const { width } = this._raster(ch);
@@ -416,11 +634,11 @@ class MixedFont {
     return Math.max(1, Math.round(this.font.getlength('M')));
   }
 
-  _raster(ch) {
+  _raster(ch: string): EmojiRaster {
     const key = `${ch}|${this._emojiTargetH}|${this._mono}`;
-    if (this._emojiCache.has(key)) return this._emojiCache.get(key);
-    const { raster, width } = emojiRasterToHeight(
-      ch, this._emojiTargetH || 32, this._mono);
+    const cached = this._emojiCache.get(key);
+    if (cached) return cached;
+    const { raster, width } = emojiRasterToHeight(ch, this._emojiTargetH || 32, this._mono);
     if (raster && !this._mono) {
       luminanceMono(raster, this._lumaLo, this._lumaHi);
     }
@@ -429,20 +647,20 @@ class MixedFont {
     return entry;
   }
 
-  setEmojiLineHeight(lineHeight) {
+  setEmojiLineHeight(lineHeight: number): void {
     this._emojiTargetH = Math.max(4, Math.round(lineHeight));
     this._emojiBand = false;
     this._emojiCache.clear();
   }
 
-  setEmojiBand(bandY) {
+  setEmojiBand(bandY: number): void {
     this._emojiTargetH = 64;
     this._emojiBand = true;
     this._emojiBandY = Math.round(bandY);
     this._emojiCache.clear();
   }
 
-  bandWidth(text) {
+  bandWidth(text: string): number {
     if (!this._emojiBand) return 0;
     let total = 0;
     for (const ch of text) {
@@ -451,13 +669,13 @@ class MixedFont {
     return total;
   }
 
-  _cleanText(text) {
+  _cleanText(text: string): string {
     let out = '';
     for (const ch of text) out += this.isEmoji(ch) ? ' ' : ch;
     return out;
   }
 
-  getlength(text) {
+  getlength(text: string): number {
     let total = 0;
     for (const [font, chunk] of this._split(text)) {
       if (font === null) {
@@ -469,7 +687,7 @@ class MixedFont {
     return total;
   }
 
-  getbbox(text, opts = {}) {
+  getbbox(text: string, opts: BBoxOptions = {}): BBox {
     const { whole } = opts;
     const anchor = opts.anchor || null;
     if (!text) return [0, 0, 0, 0];
@@ -499,7 +717,7 @@ class MixedFont {
     return b;
   }
 
-  getmetrics() {
+  getmetrics(): [ascent: number, descent: number] {
     return this.font.getmetrics();
   }
 }
@@ -507,9 +725,13 @@ class MixedFont {
 // ---------------------------------------------------------------------------
 // calculate_multiline_dimensions
 // ---------------------------------------------------------------------------
-function calculateMultilineDimensions(lines, font, lineSpacing) {
+export function calculateMultilineDimensions(
+  lines: string[],
+  font: MixedFont,
+  lineSpacing: number,
+): { width: number; height: number; lineHeights: number[] } {
   let maxWidth = 0;
-  const lineHeights = [];
+  const lineHeights: number[] = [];
   const sampleB = font.getbbox(lines.join(''), { anchor: 'lt' });
   const baseLineHeight = sampleB[3] - sampleB[1];
   const lineSpacingPixels = baseLineHeight * lineSpacing;
@@ -522,7 +744,7 @@ function calculateMultilineDimensions(lines, font, lineSpacing) {
   let totalHeight = 0;
   for (let i = 0; i < n; i++) {
     totalHeight += baseLineHeight;
-    if (n > 1 && i < n - 1) totalHeight += (lineSpacingPixels - baseLineHeight);
+    if (n > 1 && i < n - 1) totalHeight += lineSpacingPixels - baseLineHeight;
   }
   return { width: maxWidth, height: Math.round(totalHeight), lineHeights };
 }
@@ -530,7 +752,20 @@ function calculateMultilineDimensions(lines, font, lineSpacing) {
 // ---------------------------------------------------------------------------
 // _draw_text_mixed
 // ---------------------------------------------------------------------------
-function drawTextMixed(ctx, xy, text, font, opts = {}) {
+export interface DrawTextOptions {
+  fill?: string;
+  strokeWidth?: number;
+  strokeFill?: string | null;
+  whole?: boolean;
+}
+
+export function drawTextMixed(
+  ctx: CanvasRenderingContext2D,
+  xy: Point,
+  text: string,
+  font: MixedFont | WebFont,
+  opts: DrawTextOptions = {},
+): void {
   const fill = opts.fill || '#000';
   const strokeWidth = opts.strokeWidth || 0;
   const strokeFill = opts.strokeFill || null;
@@ -551,7 +786,7 @@ function drawTextMixed(ctx, xy, text, font, opts = {}) {
     return;
   }
 
-  let asc;
+  let asc: number;
   if (font._uniform) {
     asc = -font.font.getbbox(UNIFORM_SAMPLE, { anchor: 'ls', whole })[1];
   } else {
@@ -572,18 +807,38 @@ function drawTextMixed(ctx, xy, text, font, opts = {}) {
       let drawn = false;
       if (font._ligatures) {
         const entry = _ligRenderCache.get(
-          _ligKey(chunk, fontUsed.family, fontUsed.size, font._ligatures,
-            fill, strokeWidth, strokeFill));
+          _ligKey(
+            chunk,
+            fontUsed.family,
+            fontUsed.size,
+            font._ligatures,
+            fill,
+            strokeWidth,
+            strokeFill,
+          ),
+        );
         if (entry) {
-          ctx.drawImage(entry.canvas,
-            Math.round(x0 - entry.pad), Math.round(baseline - entry.baseline));
+          ctx.drawImage(
+            entry.canvas,
+            Math.round(x0 - entry.pad),
+            Math.round(baseline - entry.baseline),
+          );
           const adv = svgMeasure(chunk, fontUsed.family, fontUsed.size, font._ligatures);
           x0 += adv != null ? adv : fontUsed.getlength(chunk);
           drawn = true;
         }
       }
       if (!drawn) {
-        drawPlain(ctx, [x0, baseline], chunk, fontUsed, fill, strokeWidth, strokeFill, 'alphabetic');
+        drawPlain(
+          ctx,
+          [x0, baseline],
+          chunk,
+          fontUsed,
+          fill,
+          strokeWidth,
+          strokeFill,
+          'alphabetic',
+        );
         x0 += fontUsed.getlength(chunk);
       }
     } else {
@@ -599,7 +854,16 @@ function drawTextMixed(ctx, xy, text, font, opts = {}) {
   }
 }
 
-function drawPlain(ctx, xy, text, font, fill, strokeWidth, strokeFill, baseline) {
+function drawPlain(
+  ctx: CanvasRenderingContext2D,
+  xy: Point,
+  text: string,
+  font: WebFont,
+  fill: string,
+  strokeWidth: number,
+  strokeFill: string | null,
+  baseline?: CanvasTextBaseline,
+): void {
   ctx.save();
   ctx.font = fontString(_cssFamily(font.family), font.size);
   ctx.textBaseline = baseline || 'top';
@@ -618,7 +882,23 @@ function drawPlain(ctx, xy, text, font, fill, strokeWidth, strokeFill, baseline)
 // ---------------------------------------------------------------------------
 // draw_multiline_text
 // ---------------------------------------------------------------------------
-function drawMultilineText(ctx, textLines, x, y, font, opts) {
+export interface MultilineOptions {
+  fill: string;
+  strokeWidth: number;
+  strokeFill: string | null;
+  lineSpacing: number;
+  centerText: boolean;
+  imageWidth: number;
+}
+
+export function drawMultilineText(
+  ctx: CanvasRenderingContext2D,
+  textLines: string[],
+  x: number,
+  y: number,
+  font: MixedFont,
+  opts: MultilineOptions,
+): void {
   if (!textLines.length) return;
   const sampleB = font.getbbox(textLines.join(''), { anchor: 'lt' });
   const baseLineHeight = sampleB[3];
@@ -645,7 +925,7 @@ function drawMultilineText(ctx, textLines, x, y, font, opts) {
 // ---------------------------------------------------------------------------
 // process_image — white-crop + aspect resize (async image load)
 // ---------------------------------------------------------------------------
-async function loadImageElement(src) {
+async function loadImageElement(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
@@ -654,23 +934,33 @@ async function loadImageElement(src) {
   });
 }
 
-async function processImage(src, resize, whiteLevel, targetHeight) {
+export async function processImage(
+  src: string,
+  resize: number,
+  whiteLevel: number,
+  targetHeight: number,
+): Promise<HTMLCanvasElement | null> {
   const img = await loadImageElement(src);
-  const w = img.naturalWidth, h = img.naturalHeight;
+  const w = img.naturalWidth,
+    h = img.naturalHeight;
   const cv = document.createElement('canvas');
-  cv.width = w; cv.height = h;
-  const ctx = cv.getContext('2d');
+  cv.width = w;
+  cv.height = h;
+  const ctx = ctx2d(cv);
   // Flatten transparency onto white.
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, w, h);
   ctx.drawImage(img, 0, 0);
   const data = ctx.getImageData(0, 0, w, h).data;
-  let left = w, top = h, right = 0, bottom = 0;
+  let left = w,
+    top = h,
+    right = 0,
+    bottom = 0;
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
       // Grayscale value (Pillow converts to "L").
-      const g = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      const g = 0.299 * (data[i] ?? 0) + 0.587 * (data[i + 1] ?? 0) + 0.114 * (data[i + 2] ?? 0);
       if (g < whiteLevel) {
         if (x < left) left = x;
         if (x > right) right = x;
@@ -689,7 +979,7 @@ async function processImage(src, resize, whiteLevel, targetHeight) {
     const out = document.createElement('canvas');
     out.width = Math.max(1, outW);
     out.height = Math.max(1, outH);
-    const octx = out.getContext('2d');
+    const octx = ctx2d(out);
     octx.imageSmoothingEnabled = true;
     octx.imageSmoothingQuality = 'high';
     octx.drawImage(cv, left, top, cw, chh, 0, 0, out.width, out.height);
@@ -701,46 +991,50 @@ async function processImage(src, resize, whiteLevel, targetHeight) {
 // ---------------------------------------------------------------------------
 // build_label
 // ---------------------------------------------------------------------------
-async function buildLabel(args) {
+export async function buildLabel(args: LabelArgs): Promise<HTMLCanvasElement> {
   const tapeMm = Math.max(3.5, Math.min(12.0, Number(args.tape_width) || 12.0));
-  const heightOfPrintable = Math.round(64.0 * tapeMm / 12.0);
+  const heightOfPrintable = Math.round((64.0 * tapeMm) / 12.0);
   const printBorder = (HEIGHT_OF_THE_IMAGE - heightOfPrintable) / 2;
   const emojiMode = args.emoji_print_area ? 'print' : 'line';
   const uniform = !!args.uniform_font;
   const mono = args.mono_emoji !== false;
   const fontFamily = args.fontname || 'Arial';
 
-  const makeFont = (size) => new MixedFont(fontFamily, size, {
-    uniform, mono,
-    lumaLo: args.luma_lo, lumaHi: args.luma_hi,
-    ligatures: args.ligatures || null,
-  });
+  const makeFont = (size: number) =>
+    new MixedFont(fontFamily, size, {
+      uniform,
+      mono,
+      lumaLo: args.luma_lo,
+      lumaHi: args.luma_hi,
+      ligatures: args.ligatures || null,
+    });
 
   let text = (args.text_to_print || []).join(' ');
   if (text && args.unicode) {
     text = decodeUnicodeEscapes(text);
   }
-  const tabW = Math.max(1, parseInt(args.tab_width, 10) || 8);
+  const tabW = Math.max(1, parseInt(String(args.tab_width), 10) || 8);
   if (text.includes('\t')) text = expandTabs(text, tabW);
 
   let fontSize = 0;
   let fontHeight = 0;
-  let font = null;
+  let font = makeFont(fontSize); // always replaced before it is read
   let fontWidth = 0;
-  let lineHeights = [];
-  let textLines = null;
-  let image = null;
-  let ctx = null;
+  let lineHeights: number[] = [];
+  let image: HTMLCanvasElement;
+  let ctx: CanvasRenderingContext2D;
 
   if (text) {
     const hasNewlines = text.includes('\\n');
     if (hasNewlines) {
-      textLines = text.replace(/\\n/g, '\n').split('\n');
+      const textLines = text.replace(/\\n/g, '\n').split('\n');
       if (args.fixed_font_size) {
         fontSize = args.fixed_font_size;
         font = makeFont(fontSize);
         const d = calculateMultilineDimensions(textLines, font, args.line_spacing);
-        fontWidth = d.width; fontHeight = d.height; lineHeights = d.lineHeights;
+        fontWidth = d.width;
+        fontHeight = d.height;
+        lineHeights = d.lineHeights;
       } else {
         let stop = false;
         while (fontHeight !== heightOfPrintable) {
@@ -755,7 +1049,8 @@ async function buildLabel(args) {
                 const d2 = calculateMultilineDimensions(textLines, font, newSpacing);
                 if (d2.height === heightOfPrintable) {
                   args.line_spacing = newSpacing;
-                  fontWidth = d2.width; fontHeight = d2.height;
+                  fontWidth = d2.width;
+                  fontHeight = d2.height;
                   foundFit = true;
                   break;
                 }
@@ -769,26 +1064,32 @@ async function buildLabel(args) {
           }
           font = makeFont(fontSize);
           const d = calculateMultilineDimensions(textLines, font, args.line_spacing);
-          fontWidth = d.width; fontHeight = d.height; lineHeights = d.lineHeights;
+          fontWidth = d.width;
+          fontHeight = d.height;
+          lineHeights = d.lineHeights;
           if (stop) break;
         }
       }
       if (!args.font_scale) {
         font = makeFont(fontSize);
-        if (emojiMode === 'line') font.setEmojiLineHeight(lineHeights[0]);
+        if (emojiMode === 'line') font.setEmojiLineHeight(lineHeights[0] ?? 0);
         else font.setEmojiBand(printBorder);
         const d = calculateMultilineDimensions(textLines, font, args.line_spacing);
-        fontWidth = d.width; fontHeight = d.height; lineHeights = d.lineHeights;
+        fontWidth = d.width;
+        fontHeight = d.height;
+        lineHeights = d.lineHeights;
       }
       let yPosition = printBorder;
       if (args.font_scale) {
         const scaled = Math.round(fontSize * (args.font_scale / 100.0));
         font = makeFont(scaled);
         let d = calculateMultilineDimensions(textLines, font, args.line_spacing);
-        if (emojiMode === 'line') font.setEmojiLineHeight(d.lineHeights[0]);
+        if (emojiMode === 'line') font.setEmojiLineHeight(d.lineHeights[0] ?? 0);
         else font.setEmojiBand(printBorder);
         d = calculateMultilineDimensions(textLines, font, args.line_spacing);
-        fontWidth = d.width; fontHeight = d.height; lineHeights = d.lineHeights;
+        fontWidth = d.width;
+        fontHeight = d.height;
+        lineHeights = d.lineHeights;
         yPosition = printBorder + Math.floor((heightOfPrintable - fontHeight) / 2);
       }
       let emojiStripW = 0;
@@ -799,19 +1100,19 @@ async function buildLabel(args) {
       // measurement: widen the image so nothing is truncated on the right.
       let textW = fontWidth;
       if (args.ligatures) {
-        textW = Math.max(fontWidth,
-          ...textLines.map((l) => shapedWidth(font, l)));
+        textW = Math.max(fontWidth, ...textLines.map((l) => shapedWidth(font, l)));
       }
       const imgW = emojiStripW + textW + args.h_padding * 2 + 1 + args.end_margin;
       image = newCanvas(imgW, HEIGHT_OF_THE_IMAGE, '#fff');
-      ctx = image.getContext('2d');
+      ctx = ctx2d(image);
       if (emojiStripW) {
         let xStrip = args.h_padding;
         for (const l of textLines) {
           for (const ch of l) {
             if (font.isEmoji(ch)) {
               const { raster, width } = font._raster(ch);
-              if (raster) ctx.drawImage(raster, Math.round(xStrip), Math.round(printBorder + args.v_shift));
+              if (raster)
+                ctx.drawImage(raster, Math.round(xStrip), Math.round(printBorder + args.v_shift));
               xStrip += width;
             }
           }
@@ -820,19 +1121,29 @@ async function buildLabel(args) {
       const textX = args.h_padding + emojiStripW;
       if (args.ligatures) {
         for (const l of textLines) {
-          await preRenderLigatures(font, l, args.ligatures,
-            args.fill, args.stroke_width, args.stroke_fill);
+          await preRenderLigatures(
+            font,
+            l,
+            args.ligatures,
+            args.fill,
+            args.stroke_width,
+            args.stroke_fill,
+          );
         }
       }
       drawMultilineText(ctx, textLines, textX, yPosition + args.v_shift, font, {
-        fill: args.fill, strokeWidth: args.stroke_width, strokeFill: args.stroke_fill,
-        lineSpacing: args.line_spacing, centerText: args.center_text, imageWidth: image.width,
+        fill: args.fill,
+        strokeWidth: args.stroke_width,
+        strokeFill: args.stroke_fill,
+        lineSpacing: args.line_spacing,
+        centerText: args.center_text,
+        imageWidth: image.width,
       });
       if (args.text_size) {
         const textSize = Math.round(args.text_size / MM_PER_DOT) - args.h_padding - args.end_margin;
         const scaleFactor = fontWidth / textSize;
         image = affineScaleX(image, textSize + args.end_margin + args.h_padding, scaleFactor);
-        ctx = image.getContext('2d');
+        ctx = ctx2d(image);
       }
     } else {
       // Single-line
@@ -840,15 +1151,19 @@ async function buildLabel(args) {
         fontSize = args.fixed_font_size;
         font = makeFont(fontSize);
         const b = font.getbbox(text, { anchor: 'lt', whole: true });
-        fontWidth = b[2]; fontHeight = b[3];
+        fontWidth = b[2];
+        fontHeight = b[3];
       } else {
         let stop = false;
         while (fontHeight !== heightOfPrintable) {
-          if (fontHeight > heightOfPrintable) { fontSize -= 1; stop = true; }
-          else fontSize += 1;
+          if (fontHeight > heightOfPrintable) {
+            fontSize -= 1;
+            stop = true;
+          } else fontSize += 1;
           font = makeFont(fontSize);
           const b = font.getbbox(text, { anchor: 'lt', whole: true });
-          fontWidth = b[2]; fontHeight = b[3];
+          fontWidth = b[2];
+          fontHeight = b[3];
           if (stop) break;
         }
       }
@@ -857,7 +1172,8 @@ async function buildLabel(args) {
         if (emojiMode === 'line') font.setEmojiLineHeight(fontHeight);
         else font.setEmojiBand(printBorder);
         const b = font.getbbox(text, { anchor: 'lt', whole: true });
-        fontWidth = b[2]; fontHeight = b[3];
+        fontWidth = b[2];
+        fontHeight = b[3];
       }
       let yPosition = printBorder;
       if (args.font_scale) {
@@ -866,7 +1182,8 @@ async function buildLabel(args) {
         if (emojiMode === 'line') font.setEmojiLineHeight(fontHeight);
         else font.setEmojiBand(printBorder);
         const b = font.getbbox(text, { anchor: 'lt', whole: true });
-        fontWidth = b[2]; fontHeight = b[3];
+        fontWidth = b[2];
+        fontHeight = b[3];
         yPosition = printBorder + Math.floor((heightOfPrintable - fontHeight) / 2);
       }
       let emojiStripW = 0;
@@ -875,25 +1192,34 @@ async function buildLabel(args) {
       if (args.ligatures) textW = Math.max(fontWidth, shapedWidth(font, text));
       const imgW = emojiStripW + textW + args.h_padding * 2 + 1 + args.end_margin;
       image = newCanvas(imgW, HEIGHT_OF_THE_IMAGE, '#fff');
-      ctx = image.getContext('2d');
+      ctx = ctx2d(image);
       if (emojiStripW) {
         let xStrip = args.h_padding;
         for (const ch of text) {
           if (font.isEmoji(ch)) {
             const { raster, width } = font._raster(ch);
-            if (raster) ctx.drawImage(raster, Math.round(xStrip), Math.round(printBorder + args.v_shift));
+            if (raster)
+              ctx.drawImage(raster, Math.round(xStrip), Math.round(printBorder + args.v_shift));
             xStrip += width;
           }
         }
       }
       const textX = args.h_padding + emojiStripW;
       if (args.ligatures) {
-        await preRenderLigatures(font, text, args.ligatures,
-          args.fill, args.stroke_width, args.stroke_fill);
+        await preRenderLigatures(
+          font,
+          text,
+          args.ligatures,
+          args.fill,
+          args.stroke_width,
+          args.stroke_fill,
+        );
       }
       drawTextMixed(ctx, [textX, yPosition + args.v_shift], text, font, {
         whole: true,
-        fill: args.fill, strokeWidth: args.stroke_width, strokeFill: args.stroke_fill,
+        fill: args.fill,
+        strokeWidth: args.stroke_width,
+        strokeFill: args.stroke_fill,
       });
       if (args.text_size) {
         const textSize = Math.round(args.text_size / MM_PER_DOT) - args.h_padding - args.end_margin;
@@ -901,26 +1227,26 @@ async function buildLabel(args) {
         const textWidth = b ? b[2] - b[0] : 0;
         const scaleFactor = textWidth / textSize;
         image = affineScaleX(image, textSize + args.end_margin + args.h_padding, scaleFactor);
-        ctx = image.getContext('2d');
+        ctx = ctx2d(image);
       }
     }
   } else {
     image = newCanvas(0, HEIGHT_OF_THE_IMAGE, '#fff');
-    ctx = image.getContext('2d');
+    ctx = ctx2d(image);
   }
 
   // Merge images (in reverse order, like the original).
-  if (args.merge && args.merge.length) {
-    for (let i = args.merge.length - 1; i >= 0; i--) {
-      const loaded = await processImage(args.merge[i], args.resize, args.white_level, heightOfPrintable);
-      if (!loaded) throw new Error(`Invalid image "${args.merge[i]}"`);
+  if (args.merge?.length) {
+    for (const src of [...args.merge].reverse()) {
+      const loaded = await processImage(src, args.resize, args.white_level, heightOfPrintable);
+      if (!loaded) throw new Error(`Invalid image "${src}"`);
       const gap = image.width ? args.merge_gap : 0;
       const dst = newCanvas(loaded.width + gap + image.width, HEIGHT_OF_THE_IMAGE, '#fff');
-      const dctx = dst.getContext('2d');
+      const dctx = ctx2d(dst);
       dctx.drawImage(loaded, args.x_merge, args.y_merge);
       dctx.drawImage(image, loaded.width + gap, 0);
       image = dst;
-      ctx = image.getContext('2d');
+      ctx = ctx2d(image);
     }
   }
 
@@ -929,11 +1255,11 @@ async function buildLabel(args) {
     const targetWidthDots = Math.round(args.fixed_width / MM_PER_DOT);
     if (image.width < targetWidthDots) {
       const padded = newCanvas(targetWidthDots, image.height, '#fff');
-      const pctx = padded.getContext('2d');
+      const pctx = ctx2d(padded);
       const xOffset = args.center_text ? Math.floor((targetWidthDots - image.width) / 2) : 0;
       pctx.drawImage(image, xOffset, 0);
       image = padded;
-      ctx = image.getContext('2d');
+      ctx = ctx2d(image);
     }
   }
 
@@ -948,27 +1274,35 @@ async function buildLabel(args) {
   return image;
 }
 
-function drawRulers(ctx, image, printBorder) {
+function drawRulers(
+  ctx: CanvasRenderingContext2D,
+  image: HTMLCanvasElement,
+  printBorder: number,
+): void {
   ctx.save();
   ctx.font = '10px sans-serif';
   ctx.fillStyle = 'magenta';
   ctx.textBaseline = 'top';
   ctx.fillText('in', 0, 1);
-  let x = -1, i = 0;
+  let x = -1,
+    i = 0;
   while (x < image.width) {
     if (x > 0) {
       ctx.fillRect(Math.round(x), printBorder - (i % 4 ? 4 : 9), 2, (i % 4 ? 4 : 9) - 2);
     }
-    x += 43.18; i++;
+    x += 43.18;
+    i++;
   }
   ctx.fillText('cm', 0, 76);
-  x = -1; i = 0;
+  x = -1;
+  i = 0;
   while (x < image.width) {
     if (x > 0) {
       const len = i % 10 ? 5 : 9;
       ctx.fillRect(Math.round(x), HEIGHT_OF_THE_IMAGE - printBorder + 1, 2, len);
     }
-    x += 68; i++;
+    x += 68;
+    i++;
   }
   ctx.fillStyle = 'red';
   for (let xx = 0; xx < image.width; xx += 5) {
@@ -987,8 +1321,12 @@ function drawRulers(ctx, image, printBorder) {
 // ---------------------------------------------------------------------------
 // rasterize_label — rotate/invert/mirror + threshold + 128px pad
 // ---------------------------------------------------------------------------
-function rasterizeLabel(image, args) {
-  const w = image.width, h = image.height;
+export function rasterizeLabel(
+  image: HTMLCanvasElement,
+  args: Pick<LabelArgs, 'threshold'>,
+): HTMLCanvasElement {
+  const w = image.width,
+    h = image.height;
   // Pillow's rotate(-90, expand=True) followed by ImageOps.mirror() is
   // exactly a TRANSPOSITION: final(col, row) = src(row, col) — the raster
   // row is the label column and the raster column is the label row.
@@ -997,18 +1335,20 @@ function rasterizeLabel(image, args) {
   // keeps the output bit-exact with the Python pipeline: PIL pads with 0
   // and binarizes with v = (255 - g) > threshold ? 255 : 0, so the INK
   // ends up as the bright (255) pixels and the pad/background as 0.
-  const src = image.getContext('2d').getImageData(0, 0, w, h).data;
+  const src = ctx2d(image).getImageData(0, 0, w, h).data;
   const threshold = args.threshold;
   const x0 = Math.floor((128 - h) / 2); // content starts here (h = raster width)
   const padded = newCanvas(128, w); // no fill: PIL Image.new('1') pads with 0
-  const pctx = padded.getContext('2d');
+  const pctx = ctx2d(padded);
   const out = pctx.createImageData(128, w);
   const d = out.data;
-  for (let ry = 0; ry < w; ry++) {        // raster row = label column
-    for (let rx = 0; rx < h; rx++) {      // raster col = label row
-      const si = (rx * w + ry) * 4;       // src(row=rx, col=ry)
-      const g = 0.299 * src[si] + 0.587 * src[si + 1] + 0.114 * src[si + 2];
-      const v = (255 - g) > threshold ? 255 : 0;
+  for (let ry = 0; ry < w; ry++) {
+    // raster row = label column
+    for (let rx = 0; rx < h; rx++) {
+      // raster col = label row
+      const si = (rx * w + ry) * 4; // src(row=rx, col=ry)
+      const g = 0.299 * (src[si] ?? 0) + 0.587 * (src[si + 1] ?? 0) + 0.114 * (src[si + 2] ?? 0);
+      const v = 255 - g > threshold ? 255 : 0;
       const di = (ry * 128 + x0 + rx) * 4;
       d[di] = d[di + 1] = d[di + 2] = v;
       d[di + 3] = 255;
@@ -1021,26 +1361,40 @@ function rasterizeLabel(image, args) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function newCanvas(w, h, bg) {
+function newCanvas(w: number, h: number, bg?: string): HTMLCanvasElement {
   const cv = document.createElement('canvas');
   cv.width = Math.max(0, Math.round(w));
   cv.height = Math.max(0, Math.round(h));
   if (bg) {
-    const ctx = cv.getContext('2d');
+    const ctx = ctx2d(cv);
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, cv.width, cv.height);
   }
   return cv;
 }
 
-function affineScaleX(image, newWidth, scaleFactor) {
+function affineScaleX(
+  image: HTMLCanvasElement,
+  newWidth: number,
+  scaleFactor: number,
+): HTMLCanvasElement {
   const out = newCanvas(newWidth, image.height, '#fff');
-  const ctx = out.getContext('2d');
-  ctx.drawImage(image, 0, 0, image.width, image.height, 0, 0, image.width / scaleFactor, image.height);
+  const ctx = ctx2d(out);
+  ctx.drawImage(
+    image,
+    0,
+    0,
+    image.width,
+    image.height,
+    0,
+    0,
+    image.width / scaleFactor,
+    image.height,
+  );
   return out;
 }
 
-function expandTabs(text, tabW) {
+export function expandTabs(text: string, tabW: number): string {
   // Mirror Python str.expandtabs: advance to the next multiple of tabW.
   let out = '';
   let col = 0;
@@ -1060,42 +1414,30 @@ function expandTabs(text, tabW) {
   return out;
 }
 
-function decodeUnicodeEscapes(text) {
+export function decodeUnicodeEscapes(text: string): string {
   // Mirror Python's str.encode().decode('unicode_escape'): handle \uXXXX,
   // \UXXXXXXXX, \xXX and the common single-character escapes.
-  const simple = {
-    n: '\n', t: '\t', r: '\r', '\\': '\\', "'": "'", '"': '"',
-    a: '\x07', b: '\b', f: '\f', v: '\v', 0: '\0',
+  const simple: Record<string, string> = {
+    n: '\n',
+    t: '\t',
+    r: '\r',
+    '\\': '\\',
+    "'": "'",
+    '"': '"',
+    a: '\x07',
+    b: '\b',
+    f: '\f',
+    v: '\v',
+    0: '\0',
   };
   return text.replace(
     /\\(u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|x[0-9a-fA-F]{2}|.)/g,
-    (m, esc) => {
+    (m, esc: string) => {
       const kind = esc[0];
       if (kind === 'u') return String.fromCharCode(parseInt(esc.slice(1), 16));
       if (kind === 'U') return String.fromCodePoint(parseInt(esc.slice(1), 16));
       if (kind === 'x') return String.fromCharCode(parseInt(esc.slice(1), 16));
-      return Object.prototype.hasOwnProperty.call(simple, esc) ? simple[esc] : m;
+      return simple[esc] ?? m;
     },
   );
 }
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-window.PTLabel = {
-  buildLabel,
-  rasterizeLabel,
-  processImage,
-  calculateMultilineDimensions,
-  drawMultilineText,
-  drawTextMixed,
-  isEmojiChar,
-  MixedFont,
-  WebFont,
-  expandTabs,
-  decodeUnicodeEscapes,
-  probeLigatureFeatures,
-  MM_PER_DOT,
-  HEIGHT_OF_THE_IMAGE,
-  HEIGHT_OF_THE_TAPE,
-};
