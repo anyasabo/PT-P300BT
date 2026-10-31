@@ -252,8 +252,12 @@ class WebFont {
     if (!text) return [0, 0, 0, 0];
     const ctx = this._ctx();
     const m = ctx.measureText(text);
-    const ascent = m.actualBoundingBoxAscent || 0;
-    const descent = m.actualBoundingBoxDescent || 0;
+    // opts.whole gives whole dots, like Pillow. With a fractional ascent the
+    // browser snaps the baseline, so the tops of round letters can land one
+    // row above the printable band.
+    const dots = (v) => (opts.whole ? Math.ceil(v - 0.05) : v);
+    const ascent = dots(m.actualBoundingBoxAscent || 0);
+    const descent = dots(m.actualBoundingBoxDescent || 0);
     const left = m.actualBoundingBoxLeft || 0;
     const adv = m.width;
     if (anchor === 'lt') {
@@ -466,6 +470,7 @@ class MixedFont {
   }
 
   getbbox(text, opts = {}) {
+    const { whole } = opts;
     const anchor = opts.anchor || null;
     if (!text) return [0, 0, 0, 0];
     const hasEmojiTarget = this._emojiTargetH !== null;
@@ -474,8 +479,8 @@ class MixedFont {
     const hasEmoji = [...text].some((c) => this.isEmoji(c));
 
     if (this._uniform && clean.trim()) {
-      const hB = this.font.getbbox(UNIFORM_SAMPLE, { anchor });
-      const wB = this.font.getbbox(clean, { anchor });
+      const hB = this.font.getbbox(UNIFORM_SAMPLE, { anchor, whole });
+      const wB = this.font.getbbox(clean, { anchor, whole });
       if (hasEmojiTarget && hasEmoji && !this._emojiBand) {
         const w = Math.round(this.getlength(text));
         if (anchor === 'lt') return [0, 0, w, hB[3] - hB[1]];
@@ -485,7 +490,7 @@ class MixedFont {
       return [wB[0], hB[1], wB[2], hB[3]];
     }
 
-    const b = this.font.getbbox(clean, { anchor });
+    const b = this.font.getbbox(clean, { anchor, whole });
     if (hasEmojiTarget && hasEmoji && !this._emojiBand) {
       const w = Math.round(this.getlength(text));
       if (anchor === 'lt') return [0, 0, w, b[3] - b[1]];
@@ -529,6 +534,7 @@ function drawTextMixed(ctx, xy, text, font, opts = {}) {
   const fill = opts.fill || '#000';
   const strokeWidth = opts.strokeWidth || 0;
   const strokeFill = opts.strokeFill || null;
+  const whole = opts.whole || false;
   if (!text) return;
   if (!(font instanceof MixedFont)) {
     drawPlain(ctx, xy, text, font, fill, strokeWidth, strokeFill);
@@ -539,7 +545,7 @@ function drawTextMixed(ctx, xy, text, font, opts = {}) {
 
   if (font._emojiBand) {
     if (clean.trim()) {
-      const asc = -font.font.getbbox(clean, { anchor: 'ls' })[1];
+      const asc = -font.font.getbbox(clean, { anchor: 'ls', whole })[1];
       drawPlain(ctx, [x0, y0 + asc], clean, font.font, fill, strokeWidth, strokeFill, 'alphabetic');
     }
     return;
@@ -547,10 +553,10 @@ function drawTextMixed(ctx, xy, text, font, opts = {}) {
 
   let asc;
   if (font._uniform) {
-    asc = -font.font.getbbox(UNIFORM_SAMPLE, { anchor: 'ls' })[1];
+    asc = -font.font.getbbox(UNIFORM_SAMPLE, { anchor: 'ls', whole })[1];
   } else {
     asc = clean.trim()
-      ? -font.font.getbbox(clean, { anchor: 'ls' })[1]
+      ? -font.font.getbbox(clean, { anchor: 'ls', whole })[1]
       : font.font.getmetrics()[0];
   }
   const baseline = y0 + asc;
@@ -833,7 +839,7 @@ async function buildLabel(args) {
       if (args.fixed_font_size) {
         fontSize = args.fixed_font_size;
         font = makeFont(fontSize);
-        const b = font.getbbox(text, { anchor: 'lt' });
+        const b = font.getbbox(text, { anchor: 'lt', whole: true });
         fontWidth = b[2]; fontHeight = b[3];
       } else {
         let stop = false;
@@ -841,7 +847,7 @@ async function buildLabel(args) {
           if (fontHeight > heightOfPrintable) { fontSize -= 1; stop = true; }
           else fontSize += 1;
           font = makeFont(fontSize);
-          const b = font.getbbox(text, { anchor: 'lt' });
+          const b = font.getbbox(text, { anchor: 'lt', whole: true });
           fontWidth = b[2]; fontHeight = b[3];
           if (stop) break;
         }
@@ -850,7 +856,7 @@ async function buildLabel(args) {
         font = makeFont(fontSize);
         if (emojiMode === 'line') font.setEmojiLineHeight(fontHeight);
         else font.setEmojiBand(printBorder);
-        const b = font.getbbox(text, { anchor: 'lt' });
+        const b = font.getbbox(text, { anchor: 'lt', whole: true });
         fontWidth = b[2]; fontHeight = b[3];
       }
       let yPosition = printBorder;
@@ -859,7 +865,7 @@ async function buildLabel(args) {
         font = makeFont(scaled);
         if (emojiMode === 'line') font.setEmojiLineHeight(fontHeight);
         else font.setEmojiBand(printBorder);
-        const b = font.getbbox(text, { anchor: 'lt' });
+        const b = font.getbbox(text, { anchor: 'lt', whole: true });
         fontWidth = b[2]; fontHeight = b[3];
         yPosition = printBorder + Math.floor((heightOfPrintable - fontHeight) / 2);
       }
@@ -886,6 +892,7 @@ async function buildLabel(args) {
           args.fill, args.stroke_width, args.stroke_fill);
       }
       drawTextMixed(ctx, [textX, yPosition + args.v_shift], text, font, {
+        whole: true,
         fill: args.fill, strokeWidth: args.stroke_width, strokeFill: args.stroke_fill,
       });
       if (args.text_size) {
