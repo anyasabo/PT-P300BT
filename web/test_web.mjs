@@ -136,6 +136,14 @@ console.log('connect feedback');
   await page.waitForFunction(() => document.querySelector('#log').textContent.includes('Printer connected'));
   ok((await page.textContent('#log')).includes('Attempt 1 failed, retrying'), 'retry logged');
   eq(await page.textContent('#port-status'), 'Connected', 'connected on the Bluetooth retry');
+  await page.fill('#text', 'W'.repeat(100));
+  await page.click('#refresh-btn');
+  await page.waitForFunction(() => /too long/.test(document.querySelector('#status').textContent));
+  ok(true, 'preview warns about a label over the printer limit');
+  page.once('dialog', (d) => d.accept());
+  await page.click('#print-btn');
+  await page.waitForFunction(() => /ERROR: Label is too long/.test(document.querySelector('#log').textContent));
+  ok(!(await page.textContent('#log')).includes('Querying printer status'), 'label over the limit is not sent');
   await page.reload({ waitUntil: 'load' });
   await page.evaluate(() => {
     document.querySelectorAll('details').forEach((d) => { d.open = true; });

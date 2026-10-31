@@ -283,7 +283,9 @@ async function runPreview() {
     state.pilImage = showConv ? padded : image;
     renderPreview();
     const cm = (padded.height * window.PTLabel.MM_PER_DOT / 10).toFixed(1);
-    setStatus(`${padded.width}×${padded.height} raster, ${cm} cm of tape.`);
+    setStatus(padded.height > MAX_RASTER_LINES
+      ? tooLongMessage(padded.height)
+      : `${padded.width}×${padded.height} raster, ${cm} cm of tape.`);
   } catch (e) {
     if (String(e.message).includes('Null image')) {
       clearPreview();
@@ -445,6 +447,14 @@ async function disconnectPrinter() {
   log('=> Printer disconnected.');
 }
 
+// The printer accepts a job over the limit but does not print it correctly.
+const MAX_RASTER_LINES = 3536; // 499 mm at 180 DPI
+
+function tooLongMessage(lines) {
+  return `Label is too long: ${lines} lines, the printer limit is `
+    + `${MAX_RASTER_LINES} (499 mm). Split it into shorter labels.`;
+}
+
 async function doPrint() {
   if (!state.connected || !state.transport) {
     setStatus('Connect the printer first.');
@@ -459,6 +469,7 @@ async function doPrint() {
     log('=> Building label…');
     const image = await window.PTLabel.buildLabel(args);
     const padded = window.PTLabel.rasterizeLabel(image, args);
+    if (padded.height > MAX_RASTER_LINES) throw new Error(tooLongMessage(padded.height));
     const data = imageDataToBytes(padded);
     await window.PTPrinter.doPrintJob(
       state.transport, args, data,
