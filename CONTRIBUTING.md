@@ -52,7 +52,7 @@ The tests use `tests/fixtures/FiraCode-subset.ttf`. They do not use system fonts
 UPDATE_GOLDEN=1 uv run pytest tests/test_protocol_golden.py
 ```
 
-The parity tests compare the web raster with the Python raster, dot by dot. `tests/ref_raster.py` gives the Python raster.
+The parity tests compare the web raster with the Python raster, dot by dot. `tests/ref_raster.py` gives the Python raster. These tests run on Linux only, because the font metrics on macOS change with the macOS version.
 
 ## Deployment
 

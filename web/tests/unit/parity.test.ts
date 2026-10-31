@@ -81,35 +81,21 @@ async function compare(name: keyof typeof CASES) {
 // and the fixture font has no U+2605.
 const EMOJI_CASES = new Set<string>(['emoji', 'symbols']);
 
-// Cases where the Python and the JS raster truly differ, by platform. The
-// differences come from the text metrics of node-canvas: FreeType through
-// Pango on Linux, Core Text on macOS. Pillow's bbox has hinted heights, and
-// WebFont.getbbox rounds the unhinted ones up, so the auto-fit can stop at
-// another font size (it stops at the first size that fits exactly). Example:
-// 'Hello' is 64 dots high at size 83 in Pillow and at size 82 on macOS.
-// Observed py vs js raster lines (height of the padded raster):
-const KNOWN_DIFFERENCES: Partial<Record<NodeJS.Platform, ReadonlySet<string>>> = {
-  linux: new Set([
-    'tab', // 448 vs 460: fits at size 79 vs 81
-    'unicode_esc', // 122 vs 121
-  ]),
-  darwin: new Set([
-    'hello', // 266 vs 263: fits at size 83 vs 82
-    'emoji_area', // 266 vs 263: same text as hello, and no emoji in it
-    'three_lines', // 28 vs 27
-    'uniform', // 166 vs 164
-    'tab', // 448 vs 460: fits at size 79 vs 81
-    'tape6', // 137 vs 134
-    'fontscale', // 165 vs 162
-    'rulers', // same size, 2.09% of the pixels differ: the 'in'/'cm' text is in another font
-  ]),
-};
+// Cases where the Python and the JS raster truly differ. Pillow's bbox has
+// hinted heights, and WebFont.getbbox rounds the unhinted ones up, so the
+// auto-fit can stop at another font size. Observed py vs js raster lines:
+const KNOWN_DIFFERENCES: ReadonlySet<string> = new Set([
+  'tab', // 448 vs 460: fits at size 79 vs 81
+  'unicode_esc', // 122 vs 121
+]);
 
-describe('raster parity with printlabel.py', () => {
-  const known = KNOWN_DIFFERENCES[process.platform];
+// Parity runs on Linux only. There node-canvas and Pillow both use FreeType.
+// On macOS node-canvas uses Core Text, and its metrics change with the macOS
+// version, so a macOS result says nothing about the port.
+describe.runIf(process.platform === 'linux')('raster parity with printlabel.py', () => {
   for (const name of Object.keys(CASES) as (keyof typeof CASES)[]) {
-    if (EMOJI_CASES.has(name)) test.skip(name, () => compare(name));
-    else if (known?.has(name)) test.fails(name, () => compare(name));
+    if (EMOJI_CASES.has(name)) test.skip(name, () => {});
+    else if (KNOWN_DIFFERENCES.has(name)) test.fails(name, () => compare(name));
     else test(name, () => compare(name));
   }
 });
