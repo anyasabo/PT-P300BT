@@ -86,9 +86,11 @@ class PrintStatusTests(unittest.TestCase):
 
     def test_timeout_restores_serial_timeout(self):
         ser = FakeSerial([])
-        with patch("labelmaker.time.monotonic", side_effect=[0, 0, 61]):
-            with self.assertRaises(TimeoutError):
-                labelmaker.wait_for_print_completion(ser)
+        with (
+            patch("labelmaker.time.monotonic", side_effect=[0, 0, 61]),
+            self.assertRaises(TimeoutError),
+        ):
+            labelmaker.wait_for_print_completion(ser)
         self.assertEqual(ser.timeout, 10)
 
     def test_power_off_fails_job(self):

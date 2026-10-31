@@ -52,7 +52,7 @@ def build(case):
         padded = pl.rasterize_label(image, args)
     # 1-bit image -> bytes, 1 = black dot.
     w, h = padded.size
-    data = padded.tobytes()
+    padded.tobytes()
     # PIL '1' mode packs 8 px/byte, MSB first. Expand to 1 byte per pixel.
     out = bytearray(w * h)
     for y in range(h):

@@ -8,8 +8,11 @@ import tkinter as tk
 import unicodedata
 from tkinter import filedialog, messagebox, scrolledtext, ttk
 from tkinter import font as tkfont
+from typing import Any
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import contextlib
 
 import printlabel
 
@@ -317,10 +320,8 @@ class LabelGUI(tk.Tk):
         # Accent style for the PRINT button: falls back gracefully on themes
         # without an Accent.TButton layout (just keeps the default look).
         self._style = ttk.Style(self)
-        try:
+        with contextlib.suppress(Exception):
             self._style.configure("Accent.TButton", font=("Segoe UI", 10, "bold"))
-        except Exception:
-            pass
 
         outer = ttk.Frame(self, padding=8)
         outer.pack(fill="both", expand=True)
@@ -422,7 +423,7 @@ class LabelGUI(tk.Tk):
 
         canvas.bind_all("<MouseWheel>", _wheel)
 
-        self.vars = {}
+        self.vars: dict[str, Any] = {}
         row = [0]
 
         def group(title, expert=False):
@@ -439,15 +440,13 @@ class LabelGUI(tk.Tk):
             body = ttk.Frame(lf)
             body.grid(row=0, column=0, columnspan=3, sticky="ew")
             body.columnconfigure(1, weight=1)
-            state = {"open": True, "marker": None}
+            state: dict[str, Any] = {"open": True, "marker": None}
 
             def _update_marker():
                 m = state.get("marker")
                 if m is not None:
-                    try:
+                    with contextlib.suppress(Exception):
                         m.configure(text="▼" if state["open"] else "▶")
-                    except Exception:
-                        pass
 
             def toggle(_event=None):
                 state["open"] = not state["open"]
@@ -472,7 +471,6 @@ class LabelGUI(tk.Tk):
                 # The whole title line toggles as well (single click).
                 lf.bind("<Button-1>", toggle)
                 lf.bind("<Double-1>", toggle)
-                lf._expert_marker = lbl
             else:
                 # Regular groups: double-click the title to collapse.
                 lf.bind("<Double-1>", toggle)
@@ -922,7 +920,7 @@ class LabelGUI(tk.Tk):
             scale = self._zoom
         w = max(1, int(img.width * scale))
         h = max(1, int(img.height * scale))
-        resample = Image.NEAREST if scale >= 2 else Image.LANCZOS
+        resample = Image.Resampling.NEAREST if scale >= 2 else Image.Resampling.LANCZOS
         shown = img.resize((w, h), resample)
         self._photo = ImageTk.PhotoImage(shown)
         self.canvas.delete("all")
@@ -997,15 +995,11 @@ class LabelGUI(tk.Tk):
         current = os.path.basename(self.vars["fontname"].get() or "")
         for lbl, path in getattr(self, "_system_fonts", []):
             if os.path.basename(path).lower() == current.lower():
-                try:
+                with contextlib.suppress(tk.TclError):
                     self.font_combo.set(lbl)
-                except tk.TclError:
-                    pass
                 return
-        try:
+        with contextlib.suppress(tk.TclError):
             self.font_combo.set("")
-        except tk.TclError:
-            pass
 
     def _refresh_ligature_combo(self):
         """Fill the ligature-feature combo from the selected font's GSUB.
@@ -1033,7 +1027,7 @@ class LabelGUI(tk.Tk):
                 except Exception:
                     pass
             feats = _lig_features(font_ref)
-            values = [""] + list(feats)
+            values = ["", *list(feats)]
             try:
                 self.ligature_combo["values"] = values
             except tk.TclError:
@@ -1085,7 +1079,7 @@ class LabelGUI(tk.Tk):
         preview.pack(fill="both", expand=False, padx=6, pady=(0, 4))
 
         fonts = getattr(self, "_system_fonts", [])
-        font_path = {lbl: p for lbl, p in fonts}
+        font_path = dict(fonts)
         ordered = [lbl for lbl, _ in fonts]
 
         def refresh(*_args):
@@ -1112,14 +1106,14 @@ class LabelGUI(tk.Tk):
                 from PIL import Image, ImageDraw, ImageFont, ImageTk
 
                 size = 40
-                fnt = ImageFont.truetype(path, size)
+                fnt = ImageFont.truetype(str(path), size)
                 w = preview.winfo_width() or 640
                 tmp = Image.new("RGB", (w, 56), "white")
                 d = ImageDraw.Draw(tmp)
                 d.text((8, (56 - size) // 2), SAMPLE, font=fnt, fill=(20, 20, 20))
                 ph = ImageTk.PhotoImage(tmp)
                 preview.configure(image=ph, text="")
-                preview._img = ph  # keep a reference
+                preview._img = ph  # ty: ignore[unresolved-attribute]  # keep a reference
             except Exception:
                 # Fallback: plain Tk font family name (best effort).
                 preview.configure(text=SAMPLE, image="")
@@ -1223,10 +1217,8 @@ class LabelGUI(tk.Tk):
         """
         if self._copy_with_emoji(event) is None:
             return None  # no selection: nothing to cut
-        try:
+        with contextlib.suppress(tk.TclError):
             self.text_box.delete("sel.first", "sel.last")
-        except tk.TclError:
-            pass
         return "break"
 
     # Emoji chars get replaced by a zero-width placeholder in the widget;
@@ -1295,7 +1287,7 @@ class LabelGUI(tk.Tk):
                             bg_rgb = ImageColor.getrgb(bg)
                         except Exception:
                             bg_rgb = (255, 255, 255)
-                        flat = Image.new("RGBA", raster.size, bg_rgb + (255,))
+                        flat = Image.new("RGBA", raster.size, (*bg_rgb, 255))
                         flat.alpha_composite(raster)
                         raster = flat.convert("RGB")
                         img = ImageTk.PhotoImage(raster)
@@ -1310,10 +1302,8 @@ class LabelGUI(tk.Tk):
         except Exception:
             # On any rendering problem, keep the real text usable: drop the
             # image layout and store the text plainly.
-            try:
+            with contextlib.suppress(Exception):
                 self._emoji_sequence = []
-            except Exception:
-                pass
         finally:
             self._updating_emoji = False
 
@@ -1321,10 +1311,8 @@ class LabelGUI(tk.Tk):
         # The emoji layout (which chars are emoji) does not change when
         # toggling black & white, so force a re-render of the pictures
         # in the text box, then refresh the preview.
-        try:
+        with contextlib.suppress(Exception):
             self._refresh_emoji_view(force=True)
-        except Exception:
-            pass
         self._schedule_preview()
 
     def _on_text_modified(self, _event=None):
@@ -1597,7 +1585,7 @@ class LabelGUI(tk.Tk):
             sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "native"))
             from btcommon import list_devices as bt_list
 
-            for name, addr, chan in bt_list():
+            for name, _addr, _chan in bt_list():
                 ports.append(f"bt:{name}")
         except Exception:
             pass
@@ -1637,10 +1625,13 @@ class LabelGUI(tk.Tk):
 
     def _on_resize(self, _event):
         # Re-fit only in Fit mode and only when the window size really changed
-        if self._pil_img is not None and self._zoom_mode.get() == "Fit":
-            if not self._resize_scheduled:
-                self._resize_scheduled = True
-                self.after(150, self._after_resize)
+        if (
+            self._pil_img is not None
+            and self._zoom_mode.get() == "Fit"
+            and not self._resize_scheduled
+        ):
+            self._resize_scheduled = True
+            self.after(150, self._after_resize)
 
     def _after_resize(self):
         self._resize_scheduled = False

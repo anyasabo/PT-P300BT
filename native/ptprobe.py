@@ -40,11 +40,7 @@ class Delegate(NSObject):
 
     def rfcommChannelData_data_length_(self, channel, data, length):
         # PyObjC bridges (void *data, size_t length) to a bytes-like buffer.
-        self.rx += (
-            bytes(data[:length])
-            if not isinstance(data, (bytes, bytearray))
-            else bytes(data[:length])
-        )
+        self.rx += bytes(data[:length])
 
     def rfcommChannelClosed_(self, channel):
         pass

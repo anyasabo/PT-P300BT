@@ -207,10 +207,7 @@ def main():
         p.error("An image must be specified for printing job.")
     else:
         # Read input image into memory
-        if args.raw:
-            data = read_png(args.image, False, False, False)
-        else:
-            data = read_png(args.image)
+        data = read_png(args.image, False, False, False) if args.raw else read_png(args.image)
 
     ser = serial.Serial(args.comport, timeout=10, write_timeout=10)
 

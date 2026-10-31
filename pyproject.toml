@@ -33,8 +33,16 @@ target-version = "py315"
 extend-exclude = ["old"]
 
 [tool.ruff.lint]
-select = ["B", "C4", "E", "F", "I", "PIE", "PTH", "RUF", "SIM", "UP", "W"]
-ignore = ["E501"]
+select = ["B", "C4", "E", "F", "I", "PIE", "RUF", "SIM", "UP", "W"]
+ignore = ["E501", "RUF001"]
 
 [tool.ty.src]
 exclude = ["old"]
+
+[tool.ty.environment]
+extra-paths = ["native"]
+python-platform = "all"
+
+[tool.ty.analysis]
+# These modules are built at run time, so ty cannot see their members.
+replace-imports-with-any = ["Foundation", "IOBluetooth", "objc", "uharfbuzz"]

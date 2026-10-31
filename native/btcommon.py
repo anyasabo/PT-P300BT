@@ -20,6 +20,7 @@ paired device's Bluetooth name (default "PT-P300").
 """
 
 import atexit
+import contextlib
 import os
 import subprocess
 import sys
@@ -163,7 +164,7 @@ def _rfcomm_socket_connect(addr, timeout, open_timeout):
         raise BTError(
             f"Cannot open RFCOMM channel to {addr}: {e}. Try the 'rfcomm' "
             "utility (bluez package): sudo rfcomm connect 0 " + addr + " 1"
-        )
+        ) from e
 
 
 class _SocketSerialAdapter:
@@ -196,10 +197,8 @@ class _SocketSerialAdapter:
         pass
 
     def close(self):
-        try:
+        with contextlib.suppress(Exception):
             self._sock.close()
-        except Exception:
-            pass
         self.is_open = False
 
     def __enter__(self):

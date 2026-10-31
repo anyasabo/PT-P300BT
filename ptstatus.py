@@ -161,7 +161,8 @@ class StatusRegister(ctypes.BigEndianStructure):
     )
 
 
-describe_code = lambda code, table: f"{table.get(code, 'Unknown')} (0x{code:02x})"
+def describe_code(code, table):
+    return f"{table.get(code, 'Unknown')} (0x{code:02x})"
 
 
 def describe_flag(flagset, descset):
@@ -205,9 +206,7 @@ def print_status(stat, verbose=False):
     # 17
     # This would be uglier if written as an f string, so just leave as-is
     print(
-        "Fixed label length: {}".format(
-            f"{stat.tape_length}mm" if stat.tape_length != 0 else "N/A"
-        )
+        "Fixed label length: {}".format(f"{stat.tape_length}mm" if stat.tape_length != 0 else "N/A")
     )
     # 18
     print(f"Status: {describe_code(stat.status_type, STATUS_TYPE)}")

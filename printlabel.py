@@ -1,6 +1,8 @@
 import argparse
+import contextlib
 import os
 import sys
+from typing import Any
 
 import serial
 from pdf2image import convert_from_path
@@ -26,8 +28,8 @@ _EMOJI_CANDIDATES = [
     "/usr/local/share/fonts/NotoColorEmoji-Regular.ttf",
 ]
 _emoji_path = None
-_emoji_cmap = None
-_CMAP_CACHE = {}  # path -> set(codepoints) cache for primary fonts
+_emoji_cmap: dict[int, str] | None = None
+_CMAP_CACHE: dict[str, set[int] | None] = {}  # path -> set(codepoints) cache for primary fonts
 
 
 def _find_emoji_font():
@@ -137,7 +139,7 @@ def _luminance_mono(raster, lo=140.0, hi=175.0):
             elif lum >= HI:
                 pix[x, y] = (0, 0, 0, 0)  # clear (white label)
             else:
-                keep = int(round(a * (HI - lum) / (HI - LO)))
+                keep = round(a * (HI - lum) / (HI - LO))
                 pix[x, y] = (0, 0, 0, keep)  # antialias ramp
 
 
@@ -163,7 +165,7 @@ def _emoji_raster_to_height(emoji_path, char, target_h, mono=False):
         img = Image.new("RGBA", (big * 2 + pad * 2, big * 2 + pad * 2), (0, 0, 0, 0))
         d = ImageDraw.Draw(img)
         # Baseline at the vertical middle of the big canvas.
-        asc, desc = f.getmetrics()
+        asc, _desc = f.getmetrics()
         if mono:
             # Base monochrome glyph (no embedded_color): the outline /
             # silhouette the OS text box draws. Rendered as black ink.
@@ -184,7 +186,7 @@ def _emoji_raster_to_height(emoji_path, char, target_h, mono=False):
         w, h = crop.size
         if h <= 0:
             return None, 0
-        new_w = max(1, int(round(w * target_h / h)))
+        new_w = max(1, round(w * target_h / h))
         crop = crop.resize((new_w, target_h), Image.Resampling.LANCZOS)
         return crop, crop.width
     except Exception:
@@ -253,7 +255,7 @@ class _MixedFont:
             try:
                 from fontTools.ttLib import TTFont
 
-                self._primary_cmap = set(TTFont(primary_path).getBestCmap())
+                self._primary_cmap = set(TTFont(primary_path).getBestCmap() or {})
                 _CMAP_CACHE[key] = self._primary_cmap
             except Exception:
                 self._primary_cmap = None
@@ -267,7 +269,7 @@ class _MixedFont:
     # -- helpers -----------------------------------------------------
     def is_emoji(self, ch):
         """True if `ch` must be rendered with the emoji font."""
-        if self._emoji_path is None or self._primary_cmap is None:
+        if self._emoji_path is None or self._primary_cmap is None or _emoji_cmap is None:
             return False
         cp = ord(ch)
         return 0x1F600 in _emoji_cmap and cp in _emoji_cmap and cp not in self._primary_cmap
@@ -302,9 +304,9 @@ class _MixedFont:
         if self._emoji_band:
             return self.font.getlength(" ")
         if self._emoji_target_h:
-            raster, w = self._raster(ch)
+            _raster, w = self._raster(ch)
             return w
-        return max(1, int(round(self.font.getlength("M"))))
+        return max(1, round(self.font.getlength("M")))
 
     def _raster(self, ch):
         """Cached RGBA raster + width for an emoji at the target height.
@@ -329,7 +331,7 @@ class _MixedFont:
 
     def set_emoji_line_height(self, line_height):
         """Line mode: emoji raster height = the text line height (px)."""
-        self._emoji_target_h = max(4, int(round(line_height)))
+        self._emoji_target_h = max(4, round(line_height))
         self._emoji_band = False
         self._emoji_raster_cache.clear()
 
@@ -374,7 +376,6 @@ class _MixedFont:
         language=None,
         stroke_width=0,
         anchor=None,
-        *args,
         **kwargs,
     ):
         """Ink bounding box of the text with emoji as advance slots.
@@ -417,7 +418,6 @@ class _MixedFont:
                 language=language,
                 stroke_width=stroke_width,
                 anchor=anchor,
-                *args,
                 **kwargs,
             )
             w_bbox = self.font.getbbox(
@@ -428,17 +428,16 @@ class _MixedFont:
                 language=language,
                 stroke_width=stroke_width,
                 anchor=anchor,
-                *args,
                 **kwargs,
             )
             if shaped_x2 is not None:
-                w_bbox = (w_bbox[0], w_bbox[1], int(round(shaped_x2)), w_bbox[3])
+                w_bbox = (w_bbox[0], w_bbox[1], round(shaped_x2), w_bbox[3])
             if has_emoji_target and any(self.is_emoji(ch) for ch in text) and not self._emoji_band:
                 # Inline (line mode) with emoji: the width must also
                 # include the emoji rasters, exactly like in the regular
                 # mode below, or the label would be too short and cut the
                 # text after the last emoji.
-                w = int(round(self.getlength(text)))
+                w = round(self.getlength(text))
                 if anchor == "lt":
                     return (0, 0, w, h_bbox[3] - h_bbox[1])
                 return (w_bbox[0], h_bbox[1], w_bbox[0] + w, h_bbox[3])
@@ -453,15 +452,14 @@ class _MixedFont:
             language=language,
             stroke_width=stroke_width,
             anchor=anchor,
-            *args,
             **kwargs,
         )
         if shaped_x2 is not None:
-            b = (b[0], b[1], int(round(shaped_x2)), b[3])
+            b = (b[0], b[1], round(shaped_x2), b[3])
         if has_emoji_target and any(self.is_emoji(ch) for ch in text) and not self._emoji_band:
             # Inline (line mode) with emoji: width = pen advance of the
             # whole string (raster slots), height stays the text height.
-            w = int(round(self.getlength(text)))
+            w = round(self.getlength(text))
             if anchor == "lt":
                 return (0, 0, w, b[3] - b[1])
             return (b[0], b[1], b[0] + w, b[3])
@@ -1194,7 +1192,7 @@ def process_image(image_path, resize, white_level, target_height):
 
     # Convert the image to RGBA to ensure it has an alpha channel
     img = img.convert("RGBA")
-    pixels = img.load()
+    img.load()
 
     # Create a new white background image with the same size as the original
     white_background = Image.new("RGBA", img.size, (255, 255, 255, 255))
@@ -1275,7 +1273,7 @@ def calculate_multiline_dimensions(lines, font, line_spacing):
         total_height += base_line_height
         if n_lines > 1 and i < n_lines - 1:
             total_height += line_spacing_pixels - base_line_height
-    return max_width, int(round(total_height)), line_heights
+    return max_width, round(total_height), line_heights
 
 
 def draw_multiline_text(
@@ -1411,10 +1409,8 @@ def main():
         try:
             reset_printer(ser)
         finally:
-            try:
+            with contextlib.suppress(Exception):
                 ser.close()
-            except Exception:
-                pass
 
 
 # --------------------------------------------------------------------------
@@ -1457,7 +1453,7 @@ def _list_bt_devices():
         print("+" + "+".join("-" * (w + 2) for w in widths) + "+")
 
     def _row(cells):
-        print("| " + " | ".join(_pad(c, w) for c, w in zip(cells, widths)) + " |")
+        print("| " + " | ".join(_pad(c, w) for c, w in zip(cells, widths, strict=True)) + " |")
 
     _sep()
     _row(headers)
@@ -1512,7 +1508,6 @@ def build_label(args):
         args.merge = [args.image] + (args.merge or [])
         args.text_to_print = []
         args.image = None
-    data = None
     if args.image is None:  # not using the legacy mode
         # The PT-P300BT prints on 12 mm TZe tape with a fixed 128 px raster
         # (the hardware does not physically support narrower tape). The
@@ -1526,13 +1521,13 @@ def build_label(args):
         # Printable area (px) scales with the tape width: the 12 mm tape
         # offers a 9 mm printable band (64 px), so smaller tapes get a
         # proportionally smaller band (6 mm -> 32 px, 9 mm -> 48 px).
-        height_of_the_printable_area = int(round(64.0 * tape_mm / 12.0))
+        height_of_the_printable_area = round(64.0 * tape_mm / 12.0)
         height_of_the_image = 88  # px (can be any value >= height_of_the_tape, but height_of_the_tape + 2 border lines is good)
 
         # Compute max TT font size to remain within height_of_the_printable_area
         font_size = 0
         font_height = 0
-        font = None
+        font: Any = None
         print_border = (height_of_the_image - height_of_the_printable_area) / 2
         emoji_mode = "print" if getattr(args, "emoji_print_area", False) else "line"
         uniform = bool(getattr(args, "uniform_font", False))
@@ -1603,7 +1598,7 @@ def build_label(args):
                                 args.fontname, font_size, emoji_mode, uniform, mono
                             )
                         except Exception as e:
-                            raise _LabelError(f'Cannot load font "{args.fontname}" - {e}')
+                            raise _LabelError(f'Cannot load font "{args.fontname}" - {e}') from e
                         # Calculate dimensions for multiline text
                         font_width, font_height, line_heights = calculate_multiline_dimensions(
                             text_lines, font, args.line_spacing
@@ -1635,13 +1630,13 @@ def build_label(args):
 
                 y_position = print_border
                 if args.font_scale:
-                    scaled_font_size = int(round(font_size * (args.font_scale / 100.0)))
+                    scaled_font_size = round(font_size * (args.font_scale / 100.0))
                     try:
                         font = _load_text_font(
                             args.fontname, scaled_font_size, emoji_mode, uniform, mono
                         )
                     except Exception as e:
-                        raise _LabelError(f'Cannot load font "{args.fontname}" - {e}')
+                        raise _LabelError(f'Cannot load font "{args.fontname}" - {e}') from e
                     # Recalculate dimensions with the scaled font to get the
                     # scaled line height, then size the emoji for it.
                     font_width, font_height, line_heights = calculate_multiline_dimensions(
@@ -1663,7 +1658,7 @@ def build_label(args):
                 # text block shifts right past it.
                 emoji_strip_w = 0
                 if getattr(font, "_emoji_band", False):
-                    emoji_strip_w = max((font.band_width(l) for l in text_lines), default=0)
+                    emoji_strip_w = max((font.band_width(ln) for ln in text_lines), default=0)
 
                 # Create a drawing context for the image
                 image = Image.new(
@@ -1678,8 +1673,8 @@ def build_label(args):
                 if emoji_strip_w:
                     # Paste the emoji strip (band position, like images).
                     x_strip = args.h_padding
-                    for l in text_lines:
-                        for ch in l:
+                    for ln in text_lines:
+                        for ch in ln:
                             if font.is_emoji(ch):
                                 raster, w = font._raster(ch)
                                 if raster is not None:
@@ -1706,7 +1701,7 @@ def build_label(args):
                         image.width,
                     )
                 except Exception as e:
-                    raise _LabelError(f"Invalid parameter: {e}")
+                    raise _LabelError(f"Invalid parameter: {e}") from e
 
                 if args.text_size:
                     text_size = (
@@ -1747,7 +1742,7 @@ def build_label(args):
                                 args.fontname, font_size, emoji_mode, uniform, mono
                             )
                         except Exception as e:
-                            raise _LabelError(f'Cannot load font "{args.fontname}" - {e}')
+                            raise _LabelError(f'Cannot load font "{args.fontname}" - {e}') from e
                         font_width, font_height = font.getbbox(text, anchor="lt")[2:]
                         if stop:
                             print(
@@ -1771,13 +1766,13 @@ def build_label(args):
 
                 y_position = print_border
                 if args.font_scale:
-                    scaled_font_size = int(round(font_size * (args.font_scale / 100.0)))
+                    scaled_font_size = round(font_size * (args.font_scale / 100.0))
                     try:
                         font = _load_text_font(
                             args.fontname, scaled_font_size, emoji_mode, uniform, mono
                         )
                     except Exception as e:
-                        raise _LabelError(f'Cannot load font "{args.fontname}" - {e}')
+                        raise _LabelError(f'Cannot load font "{args.fontname}" - {e}') from e
                     if emoji_mode == "line":
                         font.set_emoji_line_height(font_height)
                     else:
@@ -1826,14 +1821,14 @@ def build_label(args):
                         stroke_fill=args.stroke_fill,
                     )
                 except Exception as e:
-                    raise _LabelError(f"Invalid parameter: {e}")
+                    raise _LabelError(f"Invalid parameter: {e}") from e
                 if args.text_size:
                     text_size = (
                         int(args.text_size / 0.149) - args.h_padding - args.end_margin
                     )  # mm to dot
                     b = font.getbbox(text, anchor="lt")
                     text_width = (b[2] - b[0]) if b else 0
-                    text_height = (b[3] - b[1]) if b else 0
+                    (b[3] - b[1]) if b else 0
                     scale_factor = text_width / text_size
                     image = image.transform(
                         (text_size + args.end_margin + args.h_padding, height_of_the_image),
@@ -1871,16 +1866,13 @@ def build_label(args):
             draw = ImageDraw.Draw(image)
 
         if args.fixed_width:
-            target_width_dots = int(round(args.fixed_width / 0.149))
+            target_width_dots = round(args.fixed_width / 0.149)
             current_width = image.width
             if current_width < target_width_dots:
                 # Create a new white image of target width and paste the existing image
                 # centered when -H/--center-text was requested, otherwise left-aligned.
                 padded_image = Image.new("RGB", (target_width_dots, image.height), "white")
-                if args.center_text:
-                    x_offset = (target_width_dots - current_width) // 2
-                else:
-                    x_offset = 0
+                x_offset = (target_width_dots - current_width) // 2 if args.center_text else 0
                 padded_image.paste(image, (x_offset, 0))
                 image = padded_image
 
@@ -1962,7 +1954,7 @@ def rasterize_label(image, args):
     # Convert to greyscale and rotate/invert/mirror the image
     rotated_image = ImageOps.invert(
         image.convert("L", dither=Image.Dither.FLOYDSTEINBERG).rotate(
-            -90, expand=True, resample=Image.BICUBIC
+            -90, expand=True, resample=Image.Resampling.BICUBIC
         )
     )
     rotated_image = ImageOps.mirror(rotated_image)

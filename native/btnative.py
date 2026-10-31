@@ -11,7 +11,9 @@ IOBluetooth channel directly — and draining the run loop on close — avoids t
 """
 
 import atexit
+import contextlib
 import time
+from typing import Any
 
 import IOBluetooth
 import objc
@@ -58,8 +60,8 @@ class BTSerial:
         self.timeout = timeout
         self._open_timeout = open_timeout
         self._device = None
-        self._channel = None
-        self._d = None
+        self._channel: Any = None
+        self._d: Any = None
         self.is_open = False
         self.open()
         atexit.register(self.close)
@@ -110,10 +112,8 @@ class BTSerial:
 
     def close(self):
         if self._channel is not None and self.is_open:
-            try:
+            with contextlib.suppress(Exception):
                 self._channel.closeChannel()
-            except Exception:
-                pass
             # Drain the run loop so bluetoothd tears down the RFCOMM channel
             # (the crux of the macOS reconnect bug).
             _spin(lambda: self._d.closed, time.time() + 1.0)

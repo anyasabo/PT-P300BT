@@ -6,7 +6,7 @@ import enum
 import io
 import struct
 from collections import namedtuple
-from typing import BinaryIO
+from typing import Any, BinaryIO
 
 import packbits
 
@@ -23,9 +23,19 @@ CMD_SCHEMA = (
     (b"M", "compression", "B", None),
     (b"\x0c", "print_page", None, None),
     (b"\x1a", "print", None, None),
-    (b"g", "data2", "H", (lambda params: params[0], lambda params, l: params.__setitem__(0, l), 1)),
+    (
+        b"g",
+        "data2",
+        "H",
+        (lambda params: params[0], lambda params, length: params.__setitem__(0, length), 1),
+    ),
     # TODO is it really for RLE data or just an alias to 'g'?
-    (b"G", "data", "H", (lambda params: params[0], lambda params, l: params.__setitem__(0, l), 1)),
+    (
+        b"G",
+        "data",
+        "H",
+        (lambda params: params[0], lambda params, length: params.__setitem__(0, length), 1),
+    ),
     (b"Z", "zerofill", None, None),
 )
 
@@ -164,27 +174,25 @@ class Opcode:
     def serialize(self, to: BinaryIO) -> None:
         to.write(self.op)
         op_bytes = bytes(self.op)
-        params = self.params
+        params: Any = self.params
         d = None
         if self.data is not None:
             if self.paramschema is None or op_bytes not in OPS_FLAT:
                 raise ValueError("Data attaching not supported")
             d = self.data.getvalue()
             # convert to list to allow writing and update length
-            if params is None:
-                params = []
-            else:
-                params = list(params)
-            if len(params) < OPS_FLAT[op_bytes][3][2]:
-                params.extend(None for _ in range(OPS_FLAT[op_bytes][3][2]))
-            OPS_FLAT[op_bytes][3][1](params, len(d))
+            params = [] if params is None else list(params)
+            length_field: Any = OPS_FLAT[op_bytes][3]
+            if len(params) < length_field[2]:
+                params.extend(None for _ in range(length_field[2]))
+            length_field[1](params, len(d))
 
         if self.paramschema is not None:
             if params is not None:
                 to.write(self.paramschema.pack(*params))
         # Raw arguments, useful for raw data
         elif params is not None:
-            to.write(params)
+            to.write(bytes(params))
         if d is not None:
             to.write(d)
 
@@ -245,9 +253,6 @@ def serialize_control_obj(mnemonic, params=None):
 
 
 def serialize_data(data, compress="none", use_data2=False):
-    if use_data2 and compress == "none":
-        # Some printers seem to use data2 to transfer uncompressed raster lines.
-        mnemonic = "data2"
-    else:
-        mnemonic = "data"
+    # Some printers seem to use data2 to transfer uncompressed raster lines.
+    mnemonic = "data2" if use_data2 and compress == "none" else "data"
     return Opcode(op_mnemonic=mnemonic, data=Data(data, compress=compress)).serialize_as_bytes()

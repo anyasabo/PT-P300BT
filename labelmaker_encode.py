@@ -1,4 +1,3 @@
-
 from PIL import Image, ImageOps
 
 import ptcbp
@@ -26,7 +25,7 @@ def read_png(path, transform=True, padding=True, dither=True):
     be processed with Imagemagick first using the -monochrome flag.
     """
     image = Image.open(path)
-    tmp = image.convert("1", dither=Image.FLOYDSTEINBERG if dither else Image.NONE)
+    tmp = image.convert("1", dither=Image.Dither.FLOYDSTEINBERG if dither else Image.Dither.NONE)
     tmp = ImageOps.invert(tmp.convert("L")).convert("1")
     if transform:
         tmp = tmp.rotate(-90, expand=True)
