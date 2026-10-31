@@ -56,4 +56,4 @@ The parity tests compare the web raster with the Python raster, dot by dot. `tes
 
 ## Deployment
 
-`.github/workflows/deploy.yml` publishes `web/dist` to GitHub Pages after a push to `main`.
+`.github/workflows/deploy.yml` publishes `web/dist` to GitHub Pages after a push to `main` or `tooling`. The site is at https://anyasabo.github.io/PT-P300BT/.
