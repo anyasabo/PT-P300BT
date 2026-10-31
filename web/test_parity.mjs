@@ -85,6 +85,7 @@ const CASES = {
   textsize: baseArgs({ text_to_print: ['Hello'], text_size: 40 }),
   fixedwidth: baseArgs({ text_to_print: ['Hi'], fixed_width: 30.0 }),
   stroke: baseArgs({ text_to_print: ['Hi'], stroke_width: 2, stroke_fill: 'black' }),
+  emoji_area: baseArgs({ emoji_print_area: true }),
 };
 
 // --- Python reference ------------------------------------------------------

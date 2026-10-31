@@ -4,6 +4,10 @@ Browser version of the printlabel tool for the Brother PT-P300BT
 label printer. It provides a HTML/CSS/JavaScript application to print over Bluetooth using the **Web Serial API**
 (Bluetooth Classic RFCOMM/SPP).
 
+## Installed fonts
+
+Chrome and Edge can list the installed fonts. Click the font list (or **List installed fonts**) and allow the permission. The page then loads the list by itself on each visit. This needs HTTPS or `localhost`. Fonts that you activate in Font Book are included. A family with more than one style also shows a **Style** list, for example Bold. Other browsers show a curated list only: use **Load font file…** for other fonts.
+
 ## Files in this directory
 
 | File | Purpose |
@@ -16,7 +20,7 @@ label printer. It provides a HTML/CSS/JavaScript application to print over Bluet
 | `printer.js` | printer protocol: PTCBP command serialization, PackBits RLE compression, status-register parsing, the full print job flow, and the Web Serial transport (`SerialTransport`) that opens Bluetooth RFCOMM/SPP devices. Exposed as `window.PTPrinter`. |
 | `test_printer.mjs` | Node test suite for the protocol (40 tests): command bytes, PackBits, status parsing, printer configuration, print job flow with a fake transport. Run: `node web/test_printer.mjs`. |
 | `test_label.mjs` | Node test suite for the label algorithms (35 tests, needs `npm i canvas`): auto-fit convergence, rasterization, emoji detection, TAB expansion, Unicode escapes. Run: `node web/test_label.mjs`. |
-| `test_web.mjs` | Playwright end-to-end suite (49 tests) driving the real page in Chrome and WebKit: preview, every control, zoom, converted-raster view, dynamic ligature list, save PNG, print guard, image merge, full print flow with a mocked serial port, and the unsupported-browser banner. Run: `node web/test_web.mjs` (needs `npm run serve` + `npx playwright install chrome webkit`). |
+| `test_web.mjs` | Playwright end-to-end suite (61 tests) driving the real page in Chrome and WebKit: preview, every control, zoom, converted-raster view, dynamic ligature list, save PNG, print guard, image merge, full print flow with a mocked serial port, and the unsupported-browser banner. Run: `node web/test_web.mjs` (needs `npm run serve` + `npx playwright install chrome webkit`). |
 | `test_parity.mjs` | Compares the web raster output with the Python reference byte-for-byte for many feature combinations (uses node-canvas, whose font metrics match Pillow). Run: `node web/test_parity.mjs`. |
 | `ref_raster.py` | Emits reference raster bytes from `printlabel.py` as JSON (`{"width", "height", "bytes"}`) for the parity test. Usage: `python web/ref_raster.py <case>`. |
 | `dbg.py` | Debug helper that prints the Python raster as ASCII art (for visual comparison with `dbgjs.mjs`). |
@@ -62,6 +66,10 @@ prompt ("… wants to connect to a serial port") listing the paired Bluetooth
 devices that expose the SPP service; the page requests the standard SPP
 service class UUID (`00001101-…`), which is how Chrome reaches Bluetooth
 Classic RFCOMM devices without an OS serial port.
+
+On macOS, choose the entry **without** `cu.` in the chooser. The `cu.` port does
+not reach the printer. The first Bluetooth attempt can take 10 s and fail. The
+page then retries by itself, and the retry connects while the link is up.
 
 ## Tests
 

@@ -37,6 +37,7 @@ CASES = {
     "textsize": ("Hello", {"text_size": 40}),
     "fixedwidth": ("Hi", {"fixed_width": 30.0}),
     "stroke": ("Hi", {"stroke_width": 2, "stroke_fill": "black"}),
+    "emoji_area": ("Hello", {"emoji_print_area": True}),
 }
 
 

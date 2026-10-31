@@ -42,7 +42,12 @@
           <span>Font</span>
           <select id="fontname"></select>
         </label>
+        <label class="field" id="fontstyle-field" hidden>
+          <span>Style</span>
+          <select id="fontstyle"></select>
+        </label>
         <div class="row">
+          <button id="font-list-btn" class="btn btn-ghost" type="button" hidden>List installed fonts</button>
           <button id="font-upload-btn" class="btn btn-ghost" type="button">Load font file…</button>
           <input id="font-upload" type="file" accept=".ttf,.otf,.ttc,.woff,.woff2" hidden>
           <span id="font-status" class="hint"></span>

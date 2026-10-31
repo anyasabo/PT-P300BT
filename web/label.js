@@ -82,9 +82,10 @@ function _svgMeasureRoot() {
   return _svgRoot;
 }
 
-// CSS-safe font family for SVG attributes (quote names with spaces).
-function _svgFamily(family) {
-  return /\s/.test(family) ? `'${family.replace(/'/g, '')}'` : family;
+// CSS-safe font family: installed fonts can have names that are not valid
+// unquoted (e.g. "Foo 3D"), and an invalid ctx.font is silently ignored.
+function _cssFamily(family) {
+  return `'${family.replace(/'/g, '')}'`;
 }
 
 // Raw measurement with an optional feature (feature=null => default shaping).
@@ -92,7 +93,7 @@ function svgMeasureRaw(text, family, size, feature) {
   if (!text || !_svgAvailable()) return null;
   const root = _svgMeasureRoot();
   const t = document.createElementNS(_SVG_NS, 'text');
-  t.setAttribute('font-family', _svgFamily(family));
+  t.setAttribute('font-family', _cssFamily(family));
   t.setAttribute('font-size', String(size));
   if (feature) t.style.fontFeatureSettings = `'${feature}' 1`;
   t.textContent = text;
@@ -167,7 +168,7 @@ function svgRender(text, family, size, feature, fill, strokeWidth, strokeFill) {
       ? ` stroke="${strokeFill}" stroke-width="${strokeWidth * 2}" stroke-linejoin="round"`
       : '';
     const svg = `<svg xmlns="${_SVG_NS}" width="${w}" height="${h}">` +
-      `<text x="${pad}" y="${baseline}" font-family="${_svgFamily(family)}" font-size="${size}" ` +
+      `<text x="${pad}" y="${baseline}" font-family="${_cssFamily(family)}" font-size="${size}" ` +
       `fill="${fill}"${stroke} style="font-feature-settings:'${feature}' 1">` +
       `${_escapeXml(text)}</text></svg>`;
     const img = new Image();
@@ -230,7 +231,7 @@ class WebFont {
   }
 
   _ctx() {
-    _measureCtx.font = fontString(this.family, this.size);
+    _measureCtx.font = fontString(_cssFamily(this.family), this.size);
     return _measureCtx;
   }
 
@@ -538,7 +539,8 @@ function drawTextMixed(ctx, xy, text, font, opts = {}) {
 
   if (font._emojiBand) {
     if (clean.trim()) {
-      drawPlain(ctx, [x0, y0], clean, font.font, fill, strokeWidth, strokeFill);
+      const asc = -font.font.getbbox(clean, { anchor: 'ls' })[1];
+      drawPlain(ctx, [x0, y0 + asc], clean, font.font, fill, strokeWidth, strokeFill, 'alphabetic');
     }
     return;
   }
@@ -593,7 +595,7 @@ function drawTextMixed(ctx, xy, text, font, opts = {}) {
 
 function drawPlain(ctx, xy, text, font, fill, strokeWidth, strokeFill, baseline) {
   ctx.save();
-  ctx.font = fontString(font.family, font.size);
+  ctx.font = fontString(_cssFamily(font.family), font.size);
   ctx.textBaseline = baseline || 'top';
   ctx.textAlign = 'left';
   ctx.fillStyle = fill;

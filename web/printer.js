@@ -391,12 +391,25 @@ class SerialTransport {
       });
     } catch (e) {
       // Older Chrome builds may not accept the option: retry without it.
+      if (e.name !== 'TypeError') throw e;
       return await navigator.serial.requestPort();
     }
   }
 
-  async open(baudRate = 9600) {
-    await this.port.open({ baudRate });
+  async open(baudRate = 9600, onRetry = () => {}) {
+    // On macOS Chrome's first Bluetooth open from idle fails after 10 s: the
+    // SDP query only reports back once the link is up. That attempt does
+    // bring the link up, for about 6 s more, so an immediate retry connects.
+    const bluetooth = Boolean(this.port.getInfo?.().bluetoothServiceClassId);
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await this.port.open({ baudRate });
+        break;
+      } catch (e) {
+        if (!bluetooth || e.name !== 'NetworkError' || attempt >= 3) throw e;
+        onRetry(attempt);
+      }
+    }
     this.writer = this.port.writable.getWriter();
     // pyserial asserts DTR/RTS when opening a port; Web Serial does not.
     // Many Bluetooth SPP devices (the PT-P300BT included) stay silent

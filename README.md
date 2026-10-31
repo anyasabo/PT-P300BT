@@ -448,6 +448,19 @@ To read the MAC address: `hcitool scan`. Setup /dev/rfcomm0.
 
 Usage: `python3 printlabel.py /dev/rfcomm0 FONT_NAME TEXT_TO_PRINT`
 
+## Bluetooth printer connection on macOS
+
+Pair the printer in System Settings > Bluetooth. Then use one of these two connections.
+
+- **Web GUI:** Open the page in Chrome or Edge. Click **Connect printer**. Select the entry that does not start with `cu.`, for example `PT-P300BT0894 - Paired`.
+- **Python:** Use the `bt:` port, for example `python3 printlabel.py "bt:PT-P300" FONT_FILE "Hello"`. This connection needs `pyobjc-framework-IOBluetooth` from `requirements.txt`. Refer to [native/README.md](native/README.md).
+
+Do not use the `/dev/cu.PT-P300BT*` port. The port opens, but macOS does not make a Bluetooth link to the printer. The printer does not send data on this port.
+
+On macOS 26 and later, the first web connection can fail after 10 seconds. The cause is a macOS problem. If there is no Bluetooth link, macOS does not tell the browser that the SDP query is complete. Refer to [Chromium issue 569041183](https://issues.chromium.org/issues/569041183). The failed attempt starts the link, so the page tries again immediately. The log then shows `Attempt 1 failed`. This is usual.
+
+If you do not use the printer, it turns off. If all three attempts fail, turn on the printer and connect again.
+
 ## Creating an executable asset for the GUI
 
 To build an executable file via [pyinstaller](https://pyinstaller.org/en/stable/), first install *pyinstaller* with `pip install pyinstaller`.

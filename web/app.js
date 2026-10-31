@@ -57,8 +57,9 @@ function checkSupport() {
 }
 
 // ---------------------------------------------------------------------------
-// Font list (system fonts are not enumerable in the browser; offer a curated
-// list plus user-loaded font files via the FontFace API).
+// Font list: a curated list, replaced by the installed fonts where the browser
+// can list them (queryLocalFonts, Chrome/Edge), plus user-loaded font files via
+// the FontFace API.
 // ---------------------------------------------------------------------------
 const SYSTEM_FONTS = [
   'Arial', 'Arial Black', 'Calibri', 'Cambria', 'Candara', 'Comic Sans MS',
@@ -68,16 +69,111 @@ const SYSTEM_FONTS = [
   'Roboto', 'Ubuntu', 'Helvetica', 'Menlo', 'Monaco',
 ];
 
-function populateFonts() {
+function populateFonts(families = SYSTEM_FONTS) {
   const sel = $('fontname');
-  sel.innerHTML = '';
-  for (const f of SYSTEM_FONTS) {
+  const current = sel.value || 'Arial';
+  sel.querySelectorAll('option:not([data-loaded])').forEach((o) => o.remove());
+  for (const f of families) {
     const o = document.createElement('option');
     o.value = f;
     o.textContent = f;
     sel.appendChild(o);
   }
-  sel.value = 'Arial';
+  sel.value = current;
+  if (!sel.value) sel.selectedIndex = 0;
+  state.fontFamily = sel.value;
+}
+
+// Styles of each installed family: family -> [{ style, postscriptName }].
+const installedFaces = new Map();
+const activatedFaces = new Set();
+let installedFontsListed = false;
+
+// A style is drawn through its PostScript name: a FontFace with that family
+// name gives the canvas the exact face, and Chrome resolves the same name in
+// the SVG ligature path, which cannot see the page's FontFaces.
+async function activateFace(name) {
+  if (activatedFaces.has(name)) return;
+  const face = new FontFace(name, `local('${name}')`);
+  await face.load();
+  document.fonts.add(face);
+  activatedFaces.add(name);
+}
+
+function populateStyles() {
+  const sel = $('fontstyle');
+  const faces = installedFaces.get($('fontname').value) || [];
+  sel.innerHTML = '';
+  for (const f of faces) {
+    const o = document.createElement('option');
+    o.value = f.postscriptName;
+    o.textContent = f.style;
+    sel.appendChild(o);
+  }
+  const regular = faces.find((f) => f.style === 'Regular');
+  if (regular) sel.value = regular.postscriptName;
+  $('fontstyle-field').hidden = faces.length < 2;
+}
+
+async function applyFontChoice() {
+  const style = $('fontstyle').value;
+  try {
+    if (style) await activateFace(style);
+    state.fontFamily = style || $('fontname').value;
+  } catch (e) {
+    $('font-status').textContent = `Failed: ${e.message}`;
+    return;
+  }
+  populateLigatures();
+  schedulePreview();
+}
+
+async function loadInstalledFonts() {
+  const status = $('font-status');
+  status.textContent = 'Listing installed fonts…';
+  try {
+    const fonts = await window.queryLocalFonts();
+    if (!fonts.length) {
+      status.textContent = 'No fonts returned: check the site\'s font permission';
+      return;
+    }
+    installedFaces.clear();
+    for (const { family, style, postscriptName } of fonts) {
+      if (!installedFaces.has(family)) installedFaces.set(family, []);
+      installedFaces.get(family).push({ style, postscriptName });
+    }
+    const families = [...installedFaces.keys()]
+      .sort((a, b) => a.localeCompare(b));
+    populateFonts(families);
+    populateStyles();
+    await applyFontChoice();
+    installedFontsListed = true;
+    status.textContent = `Listed ${families.length} installed fonts`;
+  } catch (e) {
+    status.textContent = `Failed: ${e.message}`;
+  }
+}
+
+// The permission prompt needs a click: the list loads by itself once the
+// permission is granted, otherwise the first click on the dropdown asks for it.
+async function initInstalledFonts() {
+  if (!('queryLocalFonts' in window)) {
+    $('font-status').textContent = 'This browser cannot list installed fonts';
+    return;
+  }
+  $('font-list-btn').hidden = false;
+  const perm = await navigator.permissions.query({ name: 'local-fonts' })
+    .catch(() => null);
+  if (perm && perm.state === 'granted') {
+    await loadInstalledFonts();
+    return;
+  }
+  $('font-status').textContent = 'Click the font list to add your installed fonts';
+  $('fontname').addEventListener('mousedown', (e) => {
+    if (installedFontsListed) return;
+    e.preventDefault();
+    loadInstalledFonts();
+  }, { once: true });
 }
 
 async function loadFontFile(file) {
@@ -90,11 +186,13 @@ async function loadFontFile(file) {
     const sel = $('fontname');
     const o = document.createElement('option');
     o.value = family;
+    o.dataset.loaded = '1';
     o.textContent = `${family} (loaded)`;
     sel.appendChild(o);
     sel.value = family;
+    populateStyles();
+    await applyFontChoice();
     $('font-status').textContent = `Loaded ${file.name}`;
-    schedulePreview();
   } catch (e) {
     $('font-status').textContent = `Failed: ${e.message}`;
   }
@@ -289,17 +387,37 @@ function delMerge() {
 // ---------------------------------------------------------------------------
 async function connectPrinter() {
   if (!checkSupport()) return;
+  const btn = $('connect-btn');
+  btn.disabled = true;
+  log('=> Connect: choose the printer in the browser dialog...');
+  let started = null;
   try {
     const port = await window.PTPrinter.SerialTransport.requestPort();
     const transport = new window.PTPrinter.SerialTransport(port);
-    await transport.open(9600);
+    const kind = port.getInfo().bluetoothServiceClassId
+      ? 'direct Bluetooth' : 'serial port';
+    log(`=> Connecting over ${kind} (this can take several seconds)...`);
+    setStatus(`Connecting over ${kind}...`);
+    started = performance.now();
+    await transport.open(9600, (attempt) => {
+      log(`=> Attempt ${attempt} failed, retrying while the Bluetooth link is up...`);
+    });
     state.transport = transport;
     state.connected = true;
     $('port-status').textContent = 'Connected';
     $('connect-btn').textContent = 'Disconnect';
-    log('=> Printer connected.');
+    log(`=> Printer connected in ${((performance.now() - started) / 1000).toFixed(1)} s.`);
   } catch (e) {
+    if (e.name === 'NotFoundError') {
+      log('=> Connect cancelled: no port selected.');
+      setStatus('No port selected.');
+      return;
+    }
     let msg = e.message || String(e);
+    if (started !== null) {
+      msg += ` (${e.name}, after ${((performance.now() - started) / 1000).toFixed(1)} s)`;
+      msg += '. Check that the printer is on: it turns itself off when idle.';
+    }
     if (/user gesture/i.test(msg)) {
       msg = 'The browser blocked the serial-permission prompt (it must be '
         + 'opened directly by a click). Reload the page and click '
@@ -311,6 +429,8 @@ async function connectPrinter() {
     }
     log(`Connection failed: ${msg}`);
     setStatus(`Connection failed: ${msg}`);
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -453,15 +573,16 @@ function wire() {
     el.addEventListener('input', schedulePreview);
     el.addEventListener('change', schedulePreview);
   });
-  $('fontname').addEventListener('change', (e) => {
-    state.fontFamily = e.target.value;
-    populateLigatures();
-    schedulePreview();
+  $('fontname').addEventListener('change', () => {
+    populateStyles();
+    applyFontChoice();
   });
+  $('fontstyle').addEventListener('change', applyFontChoice);
+  $('font-list-btn').onclick = loadInstalledFonts;
   $('font-upload-btn').onclick = () => $('font-upload').click();
   $('font-upload').onchange = (e) => {
     if (e.target.files[0]) {
-      loadFontFile(e.target.files[0]).then(() => populateLigatures());
+      loadFontFile(e.target.files[0]);
     }
   };
 
@@ -518,6 +639,7 @@ function init() {
   populateLigatures();
   wire();
   clearPreview();
+  initInstalledFonts();
   log('PT-P300BT Label Designer (web) ready.');
   if (!window.PTPrinter.SerialTransport.isSupported()) {
     log('Web Serial unavailable: printing disabled, preview still works.');

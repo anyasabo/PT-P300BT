@@ -68,6 +68,79 @@ console.log('font list');
   ok(fonts.includes('Arial'), 'Arial present');
   ok(fonts.includes('DejaVu Sans Mono'), 'DejaVu Sans Mono present');
 }
+// --- Installed font list ---------------------------------------------------
+console.log('installed font list');
+{
+  ok(await page.isVisible('#font-list-btn'), 'List installed fonts button shown in Chrome');
+  await page.evaluate(() => {
+    window.queryLocalFonts = async () => [
+      { family: 'Zed 3D', style: 'Regular', postscriptName: 'Arial-BoldMT' },
+      { family: 'Arial', style: 'Regular', postscriptName: 'ArialMT' },
+      { family: 'Arial', style: 'Bold', postscriptName: 'Arial-BoldMT' },
+    ];
+  });
+  await page.click('#font-list-btn');
+  await page.waitForFunction(() => document.querySelector('#fontname').options.length === 2);
+  eq(await page.$$eval('#fontname option', (o) => o.map((x) => x.value)),
+    ['Arial', 'Zed 3D'], 'installed families replace the list, sorted and unique');
+  eq(await page.inputValue('#fontname'), 'Arial', 'selection kept');
+  eq(await page.inputValue('#fontstyle'), 'ArialMT', 'Regular style selected by default');
+  await page.selectOption('#fontname', 'Zed 3D');
+  ok(await page.isHidden('#fontstyle-field'), 'style list hidden for a single-style family');
+  await page.reload({ waitUntil: 'load' });
+  await page.evaluate(() => {
+    window.queryLocalFonts = async () => [
+      { family: 'Zed 3D', style: 'Regular', postscriptName: 'Arial-BoldMT' },
+      { family: 'Arial', style: 'Regular', postscriptName: 'ArialMT' },
+    ];
+  });
+  await page.dispatchEvent('#fontname', 'mousedown');
+  await page.waitForFunction(() => document.querySelector('#fontname').options.length === 2);
+  ok(true, 'first click on the font list loads the installed fonts');
+  await page.reload({ waitUntil: 'load' });
+  await page.evaluate(() => {
+    document.querySelectorAll('details').forEach((d) => { d.open = true; });
+  });
+}
+// --- Connect feedback -------------------------------------------------------
+console.log('connect feedback');
+{
+  await page.evaluate(() => {
+    navigator.serial.requestPort = async () => ({
+      getInfo: () => ({ bluetoothServiceClassId: '00001101-0000-1000-8000-00805f9b34fb' }),
+      open: () => new Promise((_, reject) => setTimeout(
+        () => reject(new DOMException('Failed to open serial port.', 'NetworkError')), 500)),
+    });
+  });
+  await page.click('#connect-btn');
+  await page.waitForFunction(() => document.querySelector('#log').textContent.includes('Connecting over'));
+  ok(await page.isDisabled('#connect-btn'), 'Connect button disabled while connecting');
+  ok((await page.textContent('#log')).includes('direct Bluetooth'), 'connection type logged');
+  await page.waitForFunction(() => document.querySelector('#log').textContent.includes('Connection failed'));
+  ok((await page.textContent('#log')).includes('NetworkError, after '), 'failure logs error name and time');
+  ok(await page.isEnabled('#connect-btn'), 'Connect button enabled after failure');
+  await page.evaluate(() => {
+    let opens = 0;
+    navigator.serial.requestPort = async () => ({
+      getInfo: () => ({ bluetoothServiceClassId: '00001101-0000-1000-8000-00805f9b34fb' }),
+      open: async () => {
+        if (++opens === 1) throw new DOMException('Failed to open serial port.', 'NetworkError');
+      },
+      setSignals: async () => {},
+      close: async () => {},
+      readable: new ReadableStream(),
+      writable: new WritableStream(),
+    });
+  });
+  await page.click('#connect-btn');
+  await page.waitForFunction(() => document.querySelector('#log').textContent.includes('Printer connected'));
+  ok((await page.textContent('#log')).includes('Attempt 1 failed, retrying'), 'retry logged');
+  eq(await page.textContent('#port-status'), 'Connected', 'connected on the Bluetooth retry');
+  await page.reload({ waitUntil: 'load' });
+  await page.evaluate(() => {
+    document.querySelectorAll('details').forEach((d) => { d.open = true; });
+  });
+}
 // --- Dynamic ligature list ----------------------------------------------
 console.log('dynamic ligature list');
 {

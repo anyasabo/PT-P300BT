@@ -109,6 +109,7 @@ code { font-family: "Cascadia Code", Consolas, monospace; color: var(--muted); }
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
 /* ---------- Fields ---------- */
+.field[hidden] { display: none; }
 .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
 .field.inline { flex-direction: row; align-items: center; justify-content: space-between; gap: 8px; }
 .field.inline input { width: 110px; }
